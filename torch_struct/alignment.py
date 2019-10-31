@@ -2,6 +2,7 @@ import torch
 from .helpers import _Struct
 from .semirings import LogSemiring
 import math
+
 # from pytorch_memlab import MemReporter
 
 
@@ -33,8 +34,9 @@ def demote(x, index):
 
 
 class Alignment(_Struct):
-    def __init__(self, semiring=LogSemiring, local=False, max_gap=None,
-                 _custom_grad=False):
+    def __init__(
+        self, semiring=LogSemiring, local=False, max_gap=None, _custom_grad=False
+    ):
         self.semiring = semiring
         self.local = local
         self.max_gap = max_gap
@@ -211,6 +213,7 @@ class Alignment(_Struct):
         chartb[1] = reflect(charta[1], bin_MN // 2)
 
         if self._custom_grad and semiring.dg:
+
             class Merge(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx, left, right, rsize, nrsize):
@@ -228,7 +231,6 @@ class Alignment(_Struct):
                             right[:, :, :, :, :, Open, :, :, op, :, :],
                         )
 
-
                         combine = combine.view(
                             ssize, batch, size, bin_MN, LOC, LOC, 3, nrsize
                         ).permute(0, 1, 2, 7, 3, 4, 5, 6)
@@ -236,25 +238,28 @@ class Alignment(_Struct):
                         grad = grad.view(
                             ssize, batch, size, bin_MN, LOC, LOC, 3, nrsize, rsize
                         ).permute(0, 1, 2, 7, 3, 4, 5, 6, 8)
-                        
+
                         grads.append(grad)
                         st.append(combine)
-                    ctx.save_for_backward(torch.stack(grads, dim=-1),
-                                          torch.tensor(left.shape),
-                                          torch.tensor(right.shape),
-                                          torch.tensor([rsize, nrsize]))
+                    ctx.save_for_backward(
+                        torch.stack(grads, dim=-1),
+                        torch.tensor(left.shape),
+                        torch.tensor(right.shape),
+                        torch.tensor([rsize, nrsize]),
+                    )
                     return torch.stack(st, dim=-1)
-
 
                 @staticmethod
                 def backward(ctx, grad_output):
                     grad, ls, rs, v = ctx.saved_tensors
                     rsize, nrsize = v.tolist()
                     grad_in = grad.mul(grad_output.unsqueeze(-2))
-                    left = torch.zeros(*ls.tolist(),
-                                       dtype=grad_output.dtype, device=grad_output.device)
-                    right = torch.zeros(*rs.tolist(),
-                                        dtype=grad_output.dtype, device=grad_output.device)
+                    left = torch.zeros(
+                        *ls.tolist(), dtype=grad_output.dtype, device=grad_output.device
+                    )
+                    right = torch.zeros(
+                        *rs.tolist(), dtype=grad_output.dtype, device=grad_output.device
+                    )
                     # grad_in = grad_in.permute(0, 1, 2, 7, 3, 4, 5, 6, 8)
                     grad_in = grad_in.permute(9, 0, 1, 2, 4, 5, 6, 7, 3, 8)
                     for i, op in enumerate((Up, Down, Mid)):
@@ -263,13 +268,14 @@ class Alignment(_Struct):
                             top, bot = rsize + 2, 2
                         if op == Down:
                             top, bot = rsize, 0
-                            
+
                         left[:, :, :, :, :, Open, :, :, :, bot:top] += grad_in[i]
                         right[:, :, :, :, :, Open, :, 0, op, :, :] += grad_in[i].sum(-3)
                     return left, right, None, None, None
 
             merge = Merge.apply
         else:
+
             def merge(left, right, rsize, nrsize):
                 st = []
                 for op in (Up, Down, Mid):
@@ -289,7 +295,7 @@ class Alignment(_Struct):
                     ).permute(0, 1, 2, 7, 3, 4, 5, 6)
                     st.append(combine)
                 return torch.stack(st, dim=-1)
-    
+
         # Scan
         def merge2(xa, xb, size, rsize):
             nrsize = (rsize - 1) * 2 + 3
@@ -316,9 +322,9 @@ class Alignment(_Struct):
                 .transpose(-1, -2)
                 .view(ssize, batch, size, bin_MN, LOC, 1, LOC, 1, 3, nrsize, rsize)
             )
-            
+
             st = merge(left, right, rsize, nrsize)
-                
+
             if self.local:
                 left_ = pad(
                     xa[:, :, 0::2, :, :, Close, :, :],

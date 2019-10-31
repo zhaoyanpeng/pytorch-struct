@@ -22,6 +22,7 @@ from .helpers import _Struct
 import math
 from pytorch_memlab import MemReporter
 
+
 class LinearChain(_Struct):
     """
     Represents structured linear-chain CRFs, generalizing HMMs smoothing, tagging models,
@@ -56,9 +57,12 @@ class LinearChain(_Struct):
         )
         log_N = int(math.ceil(math.log(N - 1, 2)))
         bin_N = int(math.pow(2, log_N))
-        chart = [self._make_chart(
-            1, (batch, bin_N, C, C), log_potentials, force_grad
-        )[0] if i == 0 else None for i in range(log_N + 1)]
+        chart = [
+            self._make_chart(1, (batch, bin_N, C, C), log_potentials, force_grad)[0]
+            if i == 0
+            else None
+            for i in range(log_N + 1)
+        ]
 
         # Init
         for b in range(lengths.shape[0]):
@@ -77,15 +81,14 @@ class LinearChain(_Struct):
 
         backwards = []
         if self._custom_grad and semiring.dg:
+
             class Merge(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx, x, size):
-            
+
                     val = semiring.dot(
-                        x[:, :, 0 : : 2]
-                        .transpose(3, 4)
-                        .view(ssize, batch, size, 1, C, C),
-                        x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
+                        x[:, :, 0::2].transpose(3, 4).view(ssize, batch, size, 1, C, C),
+                        x[:, :, 1::2].view(ssize, batch, size, C, 1, C),
                     )
                     # ctx.shape = x.shape
                     ret = torch.zeros(*x.shape, dtype=x.dtype, device=x.device)
@@ -97,29 +100,28 @@ class LinearChain(_Struct):
 
                 @staticmethod
                 def backward(ctx, grad_output):
-                    x, ret,  = ctx.saved_tensors
+                    x, ret, = ctx.saved_tensors
 
                     val, grad = semiring.dot_grad(
-                        x[:, :, 0 : : 2]
+                        x[:, :, 0::2]
                         .transpose(3, 4)
                         .view(ssize, batch, ctx.size, 1, C, C),
-                        x[:, :, 1 : : 2].view(ssize, batch, ctx.size, C, 1, C),
+                        x[:, :, 1::2].view(ssize, batch, ctx.size, C, 1, C),
                     )
-                    
+
                     grad_in = grad.mul(grad_output.unsqueeze(-1))
-                    ret[:, :, 0::2] = grad_in.sum(3).transpose(3,4)
-                    ret[:, :, 1::2] = grad_in.sum(4)                    
+                    ret[:, :, 0::2] = grad_in.sum(3).transpose(3, 4)
+                    ret[:, :, 1::2] = grad_in.sum(4)
                     return ret, None
 
             merge = Merge.apply
-    
+
         else:
+
             def merge(x, size):
                 return semiring.dot(
-                    x[:, :, 0 : : 2]
-                    .transpose(3, 4)
-                    .view(ssize, batch, size, 1, C, C),
-                    x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
+                    x[:, :, 0::2].transpose(3, 4).view(ssize, batch, size, 1, C, C),
+                    x[:, :, 1::2].view(ssize, batch, size, C, 1, C),
                 )
 
         print("setup")
@@ -131,7 +133,7 @@ class LinearChain(_Struct):
             size = int(size / 2)
             chart[n] = merge(chart[n - 1], size)
         v = semiring.sum(semiring.sum(chart[-1][:, :, 0]))
-        
+
         print("real")
         reporter = MemReporter()
         reporter.report()

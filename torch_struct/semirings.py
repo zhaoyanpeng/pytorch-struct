@@ -1,5 +1,6 @@
 import torch
 import torch.distributions
+import numpy as np
 
 
 class Semiring:
@@ -58,8 +59,9 @@ class Semiring:
     @classmethod
     def plus(cls, a, b):
         return cls.sum(torch.stack([a, b], dim=-1))
-    
+
     dg = False
+
 
 class _Base(Semiring):
     @staticmethod
@@ -114,7 +116,9 @@ class LogSemiring(_BaseLog):
 
     Gradients give marginals.
     """
+
     dg = True
+
     @staticmethod
     def sum(xs, dim=-1):
         return torch.logsumexp(xs, dim=dim)
@@ -123,8 +127,100 @@ class LogSemiring(_BaseLog):
     def dot_grad(cls, a, b):
         "Dot product along last dim."
         c = a + b
-        part = torch.logsumexp(c, dim=-1)        
+        part = torch.logsumexp(c, dim=-1)
         return part, (c - part.unsqueeze(-1)).exp()
+
+
+def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
+    slices = []
+    total = 1
+    a_grad = a.clone().fill_(0)
+    b_grad = b.clone().fill_(0)
+
+    for s in ret.shape:
+        slices.append(slice(s))
+        total *= s
+    a_one = []
+    for i, v in enumerate(a.shape):
+        if v == 1:
+            a_one.append(i)
+    b_one = []
+    for i, v in enumerate(b.shape):
+        if v == 1:
+            b_one.append(i)
+    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+    for p in range(0, total, step):
+        a = a.clone().requires_grad_(True)
+        b = b.clone().requires_grad_(True)
+        ind = indices[:, p : p + step].unbind()
+        a_ind = list(ind)
+        for v in a_one:
+            a_ind[v] = a_ind[v].clone().fill_(0)
+        b_ind = list(ind)
+        for v in b_one:
+            b_ind[v] = b_ind[v].clone().fill_(0)
+        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+        a_g, b_g = torch.autograd.grad(ret[ind], (a, b), grad_output[ind])
+        a_grad += a_g
+        b_grad += b_g
+    return a_grad, b_grad
+
+
+def accumulate_(a, b, ret, fn, step=1000):
+    slices = []
+    total = 1
+    for s in ret.shape:
+        slices.append(slice(s))
+        total *= s
+    a_one = []
+    for i, v in enumerate(a.shape):
+        if v == 1:
+            a_one.append(i)
+    b_one = []
+    for i, v in enumerate(b.shape):
+        if v == 1:
+            b_one.append(i)
+    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+    for p in range(0, total, step):
+        ind = indices[:, p : p + step].unbind()
+        a_ind = list(ind)
+        for v in a_one:
+            a_ind[v] = a_ind[v].clone().fill_(0)
+        b_ind = list(ind)
+        for v in b_one:
+            b_ind[v] = b_ind[v].clone().fill_(0)
+        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+
+
+# def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
+#     slices = []
+#     total = 1
+#     a = a.clone().requires_grad_(True)
+#     b = b.clone().requires_grad_(True)
+#     for s in ret.shape:
+#         slices.append(slice(s))
+#         total *= s
+#     a_one = []
+#     for i, v in enumerate(a.shape):
+#         if v == 1:
+#             a_one.append(i)
+#     b_one = []
+#     for i, v in enumerate(b.shape):
+#         if v == 1:
+#             b_one.append(i)
+#     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+#     for p in range(0, total, step):
+#         ind = indices[:, p:p+step].unbind()
+#         a_ind = list(ind)
+#         for v in a_one:
+#             a_ind[v] = a_ind[v].clone().fill_(0)
+#         b_ind = list(ind)
+#         for v in b_one:
+#             b_ind[v] = b_ind[v].clone().fill_(0)
+#         ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+#         print(ret[ind])
+#         torch.autograd.grad(ret[ind], (a, b), grad_output[ind])
+#     return a.grad, b.grad
 
 
 class _LogMemDot(torch.autograd.Function):
@@ -134,17 +230,25 @@ class _LogMemDot(torch.autograd.Function):
 
         st = []
         batch = a.shape[1]
-        for p in range(0, batch, 10):
-            st.append(torch.logsumexp(a[:, p:p+10] + b[:, p:p+10],
-                                      dim=-1))
+        size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+        # return torch.logsumexp(a + b, dim=-1)
 
-        return torch.cat(st, dim=1)
-        
+        ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+        accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1))
+        # for p in range(0, batch, 10):
+        #     st.append(torch.logsumexp(a[:, p:p+10] + b[:, p:p+10],
+        #                               dim=-1))
+
+        return ret
+
     @staticmethod
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
         grad_a = a.clone().zero_()
         grad_b = b.clone().zero_()
+        size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+        ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+
         asum, bsum = [], []
         for i, (x, y) in enumerate(zip(a.shape, b.shape)):
             if x == 1:
@@ -152,23 +256,27 @@ class _LogMemDot(torch.autograd.Function):
             if y == 1:
                 bsum.append(i)
 
-        # print(a.shape, b.shape)
-        # assert(False)
-        batch = a.shape[1]
-        for p in range(0, batch, 10):
-            back = torch.softmax(a[:, p:p+10] + b[:, p:p+10], dim=-1) \
-                        .mul(grad_output[:, p:p+10].unsqueeze(-1))
-            grad_a[:, p:p+10] = back.sum(dim=asum, keepdim=True)
-            grad_b[:, p:p+10] = back.sum(dim=bsum, keepdim=True)
+        grad_a, grad_b = unaccumulate_(
+            a, b, ret, grad_output, lambda a, b: torch.logsumexp(a + b, dim=-1)
+        )
+
+        # torch.grad(grad_output)
+        # batch = a.shape[1]
+        # for p in range(0, batch, 10):
+        # back = torch.softmax(a + b, dim=-1) \
+        #             .mul(grad_output.unsqueeze(-1))
+        # grad_a = back.sum(dim=asum, keepdim=True)
+        # grad_b = back.sum(dim=bsum, keepdim=True)
         return grad_a, grad_b
 
-    
+
 class LogMemSemiring(_BaseLog):
     """
     Implements the log-space semiring (logsumexp, +, -inf, 0).
 
     Gradients give marginals.
     """
+
     @staticmethod
     def sum(xs, dim=-1):
         return torch.logsumexp(xs, dim=dim)
@@ -183,10 +291,10 @@ class LogMemSemiring(_BaseLog):
     def dot_grad(cls, a, b):
         "Dot product along last dim."
         c = a + b
-        part = torch.logsumexp(c, dim=-1)        
+        part = torch.logsumexp(c, dim=-1)
         return part, (c - part.unsqueeze(-1)).exp()
 
-    
+
 class MaxSemiring(_BaseLog):
     """
     Implements the max semiring (max, +, -inf, 0).
@@ -195,6 +303,7 @@ class MaxSemiring(_BaseLog):
     """
 
     dg = True
+
     @staticmethod
     def sum(xs, dim=-1):
         return torch.max(xs, dim=dim)[0]
@@ -203,10 +312,9 @@ class MaxSemiring(_BaseLog):
     def dot_grad(cls, a, b):
         "Dot product along last dim."
         c = a + b
-        part, argmax = torch.max(c, dim=-1)        
+        part, argmax = torch.max(c, dim=-1)
         return part, torch.nn.functional.one_hot(argmax, a.shape[-1])
 
-    
     @staticmethod
     def sparse_sum(xs, dim=-1):
         m, a = torch.max(xs, dim=dim)
