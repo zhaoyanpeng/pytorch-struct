@@ -131,7 +131,7 @@ class LogSemiring(_BaseLog):
         return part, (c - part.unsqueeze(-1)).exp()
 
 
-def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
+def unaccumulate_(a, b, ret, grad_output, fn, step=4):
     slices = []
     total = 1
     a_grad = a.clone().fill_(0)
@@ -150,8 +150,10 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
             b_one.append(i)
     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
     for p in range(0, total, step):
-        a = a.clone().requires_grad_(True)
-        b = b.clone().requires_grad_(True)
+        a_in = a.clone()
+        b_in = b.clone()
+        a_in.requires_grad_(True)
+        b_in.requires_grad_(True)
         ind = indices[:, p : p + step].unbind()
         if ind[0].shape[0] == 0:
             continue
@@ -163,9 +165,14 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
         for v in b_one:
             b_ind[v] = b_ind[v].clone().fill_(0)
             
-        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
-        print(a[tuple(a_ind)], a_ind, b_ind)
-        a_g, b_g = torch.autograd.grad(ret[ind], (a, b), grad_output[ind], allow_unused=True)
+        ret[ind] = fn(a_in[tuple(a_ind)], b_in[tuple(b_ind)])
+        print(p, a_in.requires_grad,
+              tuple(a_ind),
+              a_in[tuple(a_ind)].requires_grad,
+              b_in[tuple(b_ind)].requires_grad,
+              ret[ind].requires_grad,
+              a_ind, b_ind)
+        a_g, b_g = torch.autograd.grad(ret[ind], (a_in, b_in), grad_output[ind])
         a_grad += a_g
         b_grad += b_g
     return a_grad, b_grad
