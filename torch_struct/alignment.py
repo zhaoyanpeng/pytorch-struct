@@ -2,7 +2,7 @@ import torch
 from .helpers import _Struct
 from .semirings import LogSemiring
 import math
-from pytorch_memlab import MemReporter
+# from pytorch_memlab import MemReporter
 
 
 def pad_conv(x, k, dim, sr, extra_b=0, extra_t=0):
@@ -362,8 +362,8 @@ class Alignment(_Struct):
                 :, :, 0, M - N + (charta[-1].shape[3] // 2), N, Open, Open, Mid
             ]
 
-        reporter = MemReporter()
-        reporter.report()
+        # reporter = MemReporter()
+        # reporter.report()
         return v, [log_potentials], None
 
     @staticmethod

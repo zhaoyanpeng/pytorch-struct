@@ -20,7 +20,7 @@ Example use cases:
 import torch
 from .helpers import _Struct
 import math
-from pytorch_memlab import MemReporter
+# from pytorch_memlab import MemReporter
 
 class LinearChain(_Struct):
     """
@@ -80,24 +80,34 @@ class LinearChain(_Struct):
             class Merge(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx, x, size):
+                    val = semiring.dot(
+                        x[:, :, 0 : : 2]
+                        .transpose(3, 4)
+                        .view(ssize, batch, size, 1, C, C),
+                        x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
+                    )
+                    # ctx.shape = x.shape
+                    ret = torch.zeros(*x.shape, dtype=x.dtype, device=x.device)
+                    # ret[:, :, 0::2] = grad.sum(3).transpose(3, 4)
+                    # ret[:, :, 1::2] = grad.sum(4)
+
+                    ctx.save_for_backward(x, ret)
+                    return val
+
+                @staticmethod
+                def backward(ctx, grad_output):
+                    x, ret,  = ctx.saved_tensors
+
                     val, grad = semiring.dot_grad(
                         x[:, :, 0 : : 2]
                         .transpose(3, 4)
                         .view(ssize, batch, size, 1, C, C),
                         x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
                     )
-                    ctx.shape = x.shape
-                    ctx.save_for_backward(grad)
-                    backwards.append(grad)
-                    return val
-
-                @staticmethod
-                def backward(ctx, grad_output):
-                    grad, = ctx.saved_tensors
+                    
                     grad_in = grad.mul(grad_output.unsqueeze(-1))
-                    ret = torch.zeros(*ctx.shape, dtype=grad_output.dtype, device=grad_output.device)
-                    ret[:, :, 0::2] = grad_in[:, :, :, :, :, :].sum(3).transpose(3,4)
-                    ret[:, :, 1::2] = grad_in[:, :, :, :, :, :].sum(4)
+                    ret[:, :, 0::2] = grad_in.sum(3).transpose(3,4)
+                    ret[:, :, 1::2] = grad_in.sum(4)                    
                     return ret, None
 
             merge = Merge.apply
@@ -112,8 +122,8 @@ class LinearChain(_Struct):
                 )
 
         print("setup")
-        reporter = MemReporter()
-        reporter.report()
+        # reporter = MemReporter()
+        # reporter.report()
 
         size = bin_N
         for n in range(1, log_N + 1):
@@ -122,8 +132,8 @@ class LinearChain(_Struct):
         v = semiring.sum(semiring.sum(chart[-1][:, :, 0]))
         
         print("real")
-        reporter = MemReporter()
-        reporter.report()
+        # reporter = MemReporter()
+        # reporter.report()
 
         return v, [log_potentials], None
 
