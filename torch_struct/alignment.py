@@ -317,18 +317,6 @@ class Alignment(_Struct):
             )
             
             st = merge(left, right, rsize, nrsize)
-            # for op in (Up, Down, Mid):
-            #     top, bot = rsize + 1, 1
-            #     if op == Up:
-            #         top, bot = rsize + 2, 2
-            #     if op == Down:
-            #         top, bot = rsize, 0
-
-            #     combine = merge(left, right, bot, top, op)
-            #     combine = combine.view(
-            #         ssize, batch, size, bin_MN, LOC, LOC, 3, nrsize
-            #     ).permute(0, 1, 2, 7, 3, 4, 5, 6)
-            #     st.append(combine)
                 
             if self.local:
                 left_ = pad(
