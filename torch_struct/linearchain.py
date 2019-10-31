@@ -20,7 +20,7 @@ Example use cases:
 import torch
 from .helpers import _Struct
 import math
-
+from pytorch_memlab import MemReporter
 
 class LinearChain(_Struct):
     """
@@ -114,6 +114,9 @@ class LinearChain(_Struct):
             size = int(size / 2)
             chart[n] = merge(chart[n - 1], size)
         v = semiring.sum(semiring.sum(chart[-1][:, :, 0]))
+        reporter = MemReporter()
+        reporter.report()
+
         return v, [log_potentials], None
 
     # def _dp_standard(self, edge, lengths=None, force_grad=False):
