@@ -131,8 +131,15 @@ class _LogMemDot(torch.autograd.Function):
     @staticmethod
     def forward(ctx, a, b):
         ctx.save_for_backward(a, b)
-        return torch.logsumexp(a + b, dim=-1)
 
+        st = []
+        batch = a.shape[1]
+        for p in range(0, batch, 10):
+            st.append(torch.logsumexp(a[:, p:p+10] + b[:, p:p+10],
+                                      dim=-1))
+
+        return torch.cat(st, dim=1)
+        
     @staticmethod
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
@@ -149,10 +156,10 @@ class _LogMemDot(torch.autograd.Function):
         # assert(False)
         batch = a.shape[1]
         for p in range(0, batch, 10):
-            back = torch.softmax(a[p:p+10] + b[p:p+10], dim=-1) \
+            back = torch.softmax(a[:, p:p+10] + b[:, p:p+10], dim=-1) \
                         .mul(grad_output.unsqueeze(-1))
-            grad_a[p:p+10] = back.sum(dim=asum, keepdim=True)
-            grad_b[p:p+10] = back.sum(dim=bsum, keepdim=True)
+            grad_a[:, p:p+10] = back.sum(dim=asum, keepdim=True)
+            grad_b[:, p:p+10] = back.sum(dim=bsum, keepdim=True)
         return grad_a, grad_b
 
     
