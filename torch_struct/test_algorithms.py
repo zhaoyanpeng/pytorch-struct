@@ -162,6 +162,21 @@ def test_lc_custom():
     print(marginals2)
     assert torch.isclose(marginals, marginals2).all()
 
+def test_dp_custom():
+    model = DepTree
+    vals, _ = model._rand()
+    struct = model(LogSemiring)
+    marginals = struct.marginals(vals)
+    s = struct.sum(vals)
+
+    struct = model(LogMemSemiring, _custom_grad=False)
+    marginals2 = struct.marginals(vals)
+    s2 = struct.sum(vals)
+    assert torch.isclose(s, s2).all()
+    print(marginals)
+    print(marginals2)
+    assert torch.isclose(marginals, marginals2).all()
+
 
 def test_align_custom():
     model = Alignment

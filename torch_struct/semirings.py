@@ -134,7 +134,7 @@ class LogSemiring(_BaseLog):
 def back(x):
     x.backward()
     
-def unaccumulate_(a, b, grad_output, fn, step=1000):
+def unaccumulate_(a, b, grad_output, fn, step=10000):
     slices = []
 
     a_grad = a.clone().fill_(0)
@@ -146,11 +146,11 @@ def unaccumulate_(a, b, grad_output, fn, step=1000):
         total *= s
         
     a_one = []
-    for i, v in enumerate(a.shape):
+    for i, v in enumerate(a.shape[:-1]):
         if v == 1:
             a_one.append(i)
     b_one = []
-    for i, v in enumerate(b.shape):
+    for i, v in enumerate(b.shape[:-1]):
         if v == 1:
             b_one.append(i)
             
@@ -173,24 +173,19 @@ def unaccumulate_(a, b, grad_output, fn, step=1000):
     return a_grad, b_grad
 
 
-def accumulate_(a, b, ret, fn, step=1000):
+def accumulate_(a, b, ret, fn, step=10000):
     slices = []
     total = 1
     for s in ret.shape:
         slices.append(slice(s))
         total *= s
     
-    while len(a.shape) < len(ret.shape):
-        a = a.unsqueeze(0)
-    while len(b.shape) < len(ret.shape):
-        b = b.unsqueeze(0)
-
     a_one = []
-    for i, v in enumerate(a.shape):
+    for i, v in enumerate(a.shape[:-1]):
         if v == 1:
             a_one.append(i)
     b_one = []
-    for i, v in enumerate(b.shape):
+    for i, v in enumerate(b.shape[:-1]):
         if v == 1:
             b_one.append(i)
     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
