@@ -136,10 +136,14 @@ def back(x):
     
 def unaccumulate_(a, b, grad_output, fn, step=10000):
     slices = []
+    # a_grad = a.clone().fill_(0)    
+    # b_grad = b.clone().fill_(0)
+    # print("chcek", a_grad.shape)    
+    a_grad = torch.tensor(0.0).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
 
-    a_grad = a.clone().fill_(0)
-    b_grad = b.clone().fill_(0)
+    b_grad = torch.tensor(0.0).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
 
+    print("chcek", a_grad.shape)
     total = 1
     for s in grad_output.shape:
         slices.append(slice(s))
