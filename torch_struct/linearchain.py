@@ -20,7 +20,7 @@ Example use cases:
 import torch
 from .helpers import _Struct
 import math
-# from pytorch_memlab import MemReporter
+from pytorch_memlab import MemReporter
 
 class LinearChain(_Struct):
     """
@@ -123,8 +123,8 @@ class LinearChain(_Struct):
                 )
 
         print("setup")
-        # reporter = MemReporter()
-        # reporter.report()
+        reporter = MemReporter()
+        reporter.report()
 
         size = bin_N
         for n in range(1, log_N + 1):
@@ -133,8 +133,8 @@ class LinearChain(_Struct):
         v = semiring.sum(semiring.sum(chart[-1][:, :, 0]))
         
         print("real")
-        # reporter = MemReporter()
-        # reporter.report()
+        reporter = MemReporter()
+        reporter.report()
 
         return v, [log_potentials], None
 
