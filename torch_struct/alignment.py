@@ -310,15 +310,14 @@ class Alignment(_Struct):
             )
 
             right = (
+                pad_conv(
                 pad(
-                    pad_conv(
-                        demote(xb[:, :, 1 : size * 2 : 2, :, :], 4), nrsize, 3, semiring
-                    ),
+                        demote(xb[:, :, 1 : size * 2 : 2, :, :], 4), 
                     1,
                     1,
-                    -2,
+                    -1,
                     semiring,
-                )
+                ), nrsize, 3, semiring)
                 .transpose(-1, -2)
                 .view(ssize, batch, size, bin_MN, LOC, 1, LOC, 1, 3, nrsize, rsize)
             )
