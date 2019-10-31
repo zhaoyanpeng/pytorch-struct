@@ -80,6 +80,7 @@ class LinearChain(_Struct):
             class Merge(torch.autograd.Function):
                 @staticmethod
                 def forward(ctx, x, size):
+            
                     val = semiring.dot(
                         x[:, :, 0 : : 2]
                         .transpose(3, 4)
@@ -90,7 +91,7 @@ class LinearChain(_Struct):
                     ret = torch.zeros(*x.shape, dtype=x.dtype, device=x.device)
                     # ret[:, :, 0::2] = grad.sum(3).transpose(3, 4)
                     # ret[:, :, 1::2] = grad.sum(4)
-
+                    ctx.size = size
                     ctx.save_for_backward(x, ret)
                     return val
 
@@ -101,8 +102,8 @@ class LinearChain(_Struct):
                     val, grad = semiring.dot_grad(
                         x[:, :, 0 : : 2]
                         .transpose(3, 4)
-                        .view(ssize, batch, size, 1, C, C),
-                        x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
+                        .view(ssize, batch, ctx.size, 1, C, C),
+                        x[:, :, 1 : : 2].view(ssize, batch, ctx.size, C, 1, C),
                     )
                     
                     grad_in = grad.mul(grad_output.unsqueeze(-1))
