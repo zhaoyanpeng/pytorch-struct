@@ -162,8 +162,10 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
         b_ind = list(ind)
         for v in b_one:
             b_ind[v] = b_ind[v].clone().fill_(0)
+            
         ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
-        a_g, b_g = torch.autograd.grad(ret[ind], (a, b), grad_output[ind])
+        print(a[tuple(a_ind)], a_ind, b_ind)
+        a_g, b_g = torch.autograd.grad(ret[ind], (a, b), grad_output[ind], allow_unused=True)
         a_grad += a_g
         b_grad += b_g
     return a_grad, b_grad
