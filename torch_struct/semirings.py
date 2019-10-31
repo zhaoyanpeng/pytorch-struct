@@ -124,7 +124,7 @@ class LogSemiring(_BaseLog):
         "Dot product along last dim."
         c = a + b
         part = torch.logsumexp(c, dim=-1)        
-        return part, c.softmax(-1) #(c - part.unsqueeze(-1)).exp()
+        return part, (c - part.unsqueeze(-1)).exp()
 
 class MaxSemiring(_BaseLog):
     """
