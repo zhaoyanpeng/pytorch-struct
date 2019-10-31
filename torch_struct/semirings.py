@@ -262,8 +262,9 @@ def LogMemSemiring(max_size=100000):
 
         @staticmethod
         def backward(ctx, grad_output):
-            print("backing out", a.shape)
+
             a, b = ctx.saved_tensors
+            print("backing out", a.shape)
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
             fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
