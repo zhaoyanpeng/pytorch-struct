@@ -142,6 +142,7 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     a_grad = torch.tensor(0.0, device=a.device).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
 
     b_grad = torch.tensor(0.0, device=b.device).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
+    print(b_grad.shape, a.shape)
 
     print("chcek", a_grad.shape)
     total = 1
@@ -268,9 +269,9 @@ def LogMemSemiring(max_size=100000):
         def backward(ctx, grad_output):
 
             a, b = ctx.saved_tensors
-            print("backing out", a.shape)
-            reporter = MemReporter()
-            reporter.report()
+            # print("backing out", a.shape)
+            # reporter = MemReporter()
+            # reporter.report()
 
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
@@ -291,9 +292,9 @@ def LogMemSemiring(max_size=100000):
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
                 
-            print("backing out 2", a.shape)
-            reporter = MemReporter()
-            reporter.report()
+            # print("backing out 2", a.shape)
+            # reporter = MemReporter()
+            # reporter.report()
 
                 
             return grad_a, grad_b
