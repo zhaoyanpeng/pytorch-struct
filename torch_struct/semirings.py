@@ -133,10 +133,19 @@ class MaxSemiring(_BaseLog):
     Gradients give argmax.
     """
 
+    dg = True
     @staticmethod
     def sum(xs, dim=-1):
         return torch.max(xs, dim=dim)[0]
 
+    @classmethod
+    def dot_grad(cls, a, b):
+        "Dot product along last dim."
+        c = a + b
+        part, argmax = torch.max(c, dim=-1)        
+        return part, torch.nn.functional.one_hot(argmax, a.shape[-1])
+
+    
     @staticmethod
     def sparse_sum(xs, dim=-1):
         m, a = torch.max(xs, dim=dim)
