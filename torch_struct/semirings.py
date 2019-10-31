@@ -168,8 +168,8 @@ def unaccumulate_(a, b, grad_output, fn, step=1000):
             
         q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
         # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
-        a_grad.index_put_(tuple(a_ind),  q, accumulate_=True)
-        b_grad.index_put_(tuple(b_ind),  q, accumulate_=True)
+        a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
+        b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
     return a_grad, b_grad
 
 
