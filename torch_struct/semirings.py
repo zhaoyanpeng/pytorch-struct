@@ -126,6 +126,61 @@ class LogSemiring(_BaseLog):
         part = torch.logsumexp(c, dim=-1)        
         return part, (c - part.unsqueeze(-1)).exp()
 
+
+class _LogMemDot(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return torch.logsumexp(a + b, dim=-1)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        print(a.shape, b.shape)
+        back = torch.softmax(a + b, dim=-1) \
+                    .mul(grad_output.unsqueeze(-1))
+        # ashape, bshape = [], []
+        asum, bsum = [], []
+        for i, (x, y) in enumerate(zip(a.shape, b.shape)):
+            if x == 1:
+                asum.append(i)
+            if y == 1:
+                bsum.append(i)
+            # ashape.append(x)
+            # bshape.append(y)
+
+        grad_a = a.clone().zero_()
+        grad_b = b.clone().zero_()
+        print(grad_a.shape, grad_b.shape, asum, bsum)
+        grad_a[:] = back.sum(dim=asum, keepdim=True)
+        grad_b[:] = back.sum(dim=bsum, keepdim=True)
+        return grad_a, grad_b
+
+    
+class LogMemSemiring(_BaseLog):
+    """
+    Implements the log-space semiring (logsumexp, +, -inf, 0).
+
+    Gradients give marginals.
+    """
+    @staticmethod
+    def sum(xs, dim=-1):
+        return torch.logsumexp(xs, dim=dim)
+
+    @classmethod
+    def dot(cls, a, b):
+        "Dot product along last dim."
+        return _LogMemDot.apply(a, b)
+        # return cls.sum(cls.times(*ls))
+
+    @classmethod
+    def dot_grad(cls, a, b):
+        "Dot product along last dim."
+        c = a + b
+        part = torch.logsumexp(c, dim=-1)        
+        return part, (c - part.unsqueeze(-1)).exp()
+
+    
 class MaxSemiring(_BaseLog):
     """
     Implements the max semiring (max, +, -inf, 0).

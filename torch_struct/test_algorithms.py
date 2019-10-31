@@ -6,6 +6,7 @@ from .semimarkov import SemiMarkov
 from .alignment import Alignment
 from .semirings import (
     LogSemiring,
+    LogMemSemiring,
     KMaxSemiring,
     SparseMaxSemiring,
     MaxSemiring,
@@ -150,7 +151,7 @@ def test_lc_custom():
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
     
-    struct = LinearChain(LogSemiring, _custom_grad=True)
+    struct = LinearChain(LogMemSemiring, _custom_grad=False)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     assert torch.isclose(s, s2).all()
@@ -165,7 +166,7 @@ def test_align_custom():
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
     
-    struct = Alignment(LogSemiring, _custom_grad=True)
+    struct = Alignment(LogMemSemiring, _custom_grad=False)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     assert torch.isclose(s, s2).all()
