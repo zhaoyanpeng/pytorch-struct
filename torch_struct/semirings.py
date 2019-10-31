@@ -1,7 +1,7 @@
 import torch
 import torch.distributions
 import numpy as np
-
+from pytorch_memlab import MemReporter
 
 class Semiring:
     """
@@ -265,6 +265,9 @@ def LogMemSemiring(max_size=100000):
 
             a, b = ctx.saved_tensors
             print("backing out", a.shape)
+            reporter = MemReporter()
+            reporter.report()
+
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
             fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
@@ -283,7 +286,12 @@ def LogMemSemiring(max_size=100000):
                 back = fn(a, b, grad_output)
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
+                
+            print("backing out 2", a.shape)
+            reporter = MemReporter()
+            reporter.report()
 
+                
             return grad_a, grad_b
 
 
