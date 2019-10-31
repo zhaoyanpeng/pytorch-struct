@@ -140,12 +140,8 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     # b_grad = b.clone().fill_(0)
     # print("chcek", a_grad.shape)    
     a_grad = torch.tensor(0.0, device=a.device).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
-    a_grad = a_grad.expand_as(a)
     b_grad = torch.tensor(0.0, device=b.device).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
-    b_grad = b_grad.expand_as(b)
-    print(b_grad.shape, a.shape)
 
-    print("chcek", a_grad.shape)
     total = 1
     for s in grad_output.shape:
         slices.append(slice(s))
@@ -174,6 +170,7 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
             
         q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
         # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
+        print(len(a_ind), q.shape, a_grad.shape)
         a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
         b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
     return a_grad, b_grad
