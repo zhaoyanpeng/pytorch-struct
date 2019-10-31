@@ -134,15 +134,17 @@ class LogSemiring(_BaseLog):
 def back(x):
     x.backward()
     
-def unaccumulate_(a, b, ret, grad_output, fn, step=10000):
+def unaccumulate_(a, b, grad_output, fn, step=1000):
     slices = []
-    total = 1
+
     a_grad = a.clone().fill_(0)
     b_grad = b.clone().fill_(0)
 
-    for s in ret.shape:
+    total = 1
+    for s in grad_output.shape:
         slices.append(slice(s))
         total *= s
+        
     a_one = []
     for i, v in enumerate(a.shape):
         if v == 1:
@@ -151,12 +153,11 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=10000):
     for i, v in enumerate(b.shape):
         if v == 1:
             b_one.append(i)
-    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+            
+    indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape), -1)
     
     for p in range(0, total, step):
         ind = indices[:, p : p + step].unbind()
-        if ind[0].shape[0] == 0:
-            continue
 
         a_ind = list(ind)
         for v in a_one:
@@ -165,10 +166,10 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=10000):
         for v in b_one:
             b_ind[v] = b_ind[v].clone().fill_(0).long()
             
-        q = fn(a[tuple(a_ind)], b[tuple(b_ind)],
-               grad_output[ind])
-        a_grad[tuple(a_ind)] += q
-        b_grad[tuple(b_ind)] += q
+        q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
+        # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
+        a_grad.index_put_(tuple(a_ind),  q, accumulate_=True)
+        b_grad.index_put_(tuple(b_ind),  q, accumulate_=True)
     return a_grad, b_grad
 
 
@@ -178,6 +179,12 @@ def accumulate_(a, b, ret, fn, step=10000):
     for s in ret.shape:
         slices.append(slice(s))
         total *= s
+    
+    while len(a.shape) < len(ret.shape):
+        a = a.unsqueeze(0)
+    while len(b.shape) < len(ret.shape):
+        b = b.unsqueeze(0)
+
     a_one = []
     for i, v in enumerate(a.shape):
         if v == 1:
@@ -244,31 +251,30 @@ class _LogMemDot(torch.autograd.Function):
 
         ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
         accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1))
-        # for p in range(0, batch, 10):
-        #     st.append(torch.logsumexp(a[:, p:p+10] + b[:, p:p+10],
-        #                               dim=-1))
-
         return ret
 
     @staticmethod
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
-        grad_a = a.clone().zero_()
-        grad_b = b.clone().zero_()
         size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-        ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
 
-        asum, bsum = [], []
-        for i, (x, y) in enumerate(zip(a.shape, b.shape)):
-            if x == 1:
-                asum.append(i)
-            if y == 1:
-                bsum.append(i)
+        fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
+        if True:
+            grad_a, grad_b = unaccumulate_(
+                a, b, grad_output, fn
+            )
+        else:
+            asum, bsum = [], []
+            for i, (x, y) in enumerate(zip(a.shape, b.shape)):
+                if x == 1:
+                    asum.append(i)
+                if y == 1:
+                    bsum.append(i)
+            back = fn(a, b, grad_output)
+            grad_a = back.sum(dim=asum, keepdim=True)
+            grad_b = back.sum(dim=bsum, keepdim=True)
 
-        grad_a, grad_b = unaccumulate_(
-            a, b, ret, grad_output,
-            lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
-        )
+        return grad_a, grad_b
 
         # torch.grad(grad_output)
         # batch = a.shape[1]
@@ -277,7 +283,7 @@ class _LogMemDot(torch.autograd.Function):
         #             .mul(grad_output.unsqueeze(-1))
         # grad_a = back.sum(dim=asum, keepdim=True)
         # grad_b = back.sum(dim=bsum, keepdim=True)
-        return grad_a, grad_b
+        
 
 
 class LogMemSemiring(_BaseLog):
