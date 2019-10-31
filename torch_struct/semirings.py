@@ -58,7 +58,8 @@ class Semiring:
     @classmethod
     def plus(cls, a, b):
         return cls.sum(torch.stack([a, b], dim=-1))
-
+    
+    dg = False
 
 class _Base(Semiring):
     @staticmethod
@@ -113,11 +114,17 @@ class LogSemiring(_BaseLog):
 
     Gradients give marginals.
     """
-
+    dg = True
     @staticmethod
     def sum(xs, dim=-1):
         return torch.logsumexp(xs, dim=dim)
 
+    @classmethod
+    def dot_grad(cls, a, b):
+        "Dot product along last dim."
+        c = a + b
+        part = torch.logsumexp(c, dim=-1)        
+        return part, c.softmax(-1) #(c - part.unsqueeze(-1)).exp()
 
 class MaxSemiring(_BaseLog):
     """

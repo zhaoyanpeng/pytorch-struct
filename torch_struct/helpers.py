@@ -12,8 +12,9 @@ from torch.autograd import Function
 
 
 class _Struct:
-    def __init__(self, semiring=LogSemiring):
+    def __init__(self, semiring=LogSemiring, _custom_grad=False):
         self.semiring = semiring
+        self._custom_grad = _custom_grad
 
     def score(self, potentials, parts, batch_dims=[0]):
         score = torch.mul(potentials, parts)

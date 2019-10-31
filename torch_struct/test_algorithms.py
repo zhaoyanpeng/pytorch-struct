@@ -124,7 +124,7 @@ def test_kmax(data):
 @settings(max_examples=50, deadline=None)
 def test_generic_a(data):
     model = data.draw(
-        sampled_from([Alignment, LinearChain, SemiMarkov, CKY, CKY_CRF, DepTree])
+        sampled_from([LinearChain])#Alignment, LinearChain, SemiMarkov, CKY, CKY_CRF, DepTree])
     )
     semiring = data.draw(sampled_from([LogSemiring, MaxSemiring]))
     struct = model(semiring)
@@ -142,6 +142,21 @@ def test_generic_a(data):
     score = struct.sum(vals)
     marginals = struct.marginals(vals)
     assert torch.isclose(score, struct.score(vals, marginals)).all()
+
+def test_lc_custom():
+    model = LinearChain
+    vals, _ = model._rand()
+    struct = LinearChain(LogSemiring)
+    marginals = struct.marginals(vals)
+    s = struct.sum(vals)
+    
+    struct = LinearChain(LogSemiring, _custom_grad=True)
+    marginals2 = struct.marginals(vals)
+    s2 = struct.sum(vals)
+    assert torch.isclose(s, s2).all()
+    print(marginals)
+    print(marginals2)
+    assert torch.isclose(marginals, marginals2).all()
 
 
 @given(data())
