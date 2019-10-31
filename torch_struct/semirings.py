@@ -153,6 +153,9 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
         a = a.clone().requires_grad_(True)
         b = b.clone().requires_grad_(True)
         ind = indices[:, p : p + step].unbind()
+        if ind[0].shape[0] == 0:
+            continue
+
         a_ind = list(ind)
         for v in a_one:
             a_ind[v] = a_ind[v].clone().fill_(0)
@@ -182,7 +185,10 @@ def accumulate_(a, b, ret, fn, step=1000):
             b_one.append(i)
     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
     for p in range(0, total, step):
+        
         ind = indices[:, p : p + step].unbind()
+        if ind[0].shape[0] == 0:
+            continue
         a_ind = list(ind)
         for v in a_one:
             a_ind[v] = a_ind[v].clone().fill_(0)
