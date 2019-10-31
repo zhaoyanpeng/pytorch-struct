@@ -19,6 +19,7 @@ from .alignment import Alignment
 from .rl import SelfCritical
 from .semirings import (
     LogSemiring,
+    LogMemSemiring,
     StdSemiring,
     KMaxSemiring,
     SparseMaxSemiring,
