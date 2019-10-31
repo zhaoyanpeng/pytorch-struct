@@ -134,7 +134,7 @@ class LogSemiring(_BaseLog):
 def back(x):
     x.backward()
     
-def unaccumulate_(a, b, ret, grad_output, fn, step=4):
+def unaccumulate_(a, b, ret, grad_output, fn, step=10000):
     slices = []
     total = 1
     a_grad = a.clone().fill_(0)
@@ -172,7 +172,7 @@ def unaccumulate_(a, b, ret, grad_output, fn, step=4):
     return a_grad, b_grad
 
 
-def accumulate_(a, b, ret, fn, step=1000):
+def accumulate_(a, b, ret, fn, step=10000):
     slices = []
     total = 1
     for s in ret.shape:
