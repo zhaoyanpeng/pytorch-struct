@@ -173,7 +173,7 @@ def unaccumulate_(a, b, grad_output, fn, step=1000):
     return a_grad, b_grad
 
 
-def accumulate_(a, b, ret, fn, step=10000):
+def accumulate_(a, b, ret, fn, step=1000):
     slices = []
     total = 1
     for s in ret.shape:
