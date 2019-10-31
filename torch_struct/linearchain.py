@@ -93,7 +93,7 @@ class LinearChain(_Struct):
                 def backward(ctx, grad_output):
                     grad, = ctx.saved_tensors
                     grad_in = grad.mul(grad_output.unsqueeze(-1))
-                    ret = torch.zeros(*ctx.shape)
+                    ret = torch.zeros(*ctx.shape, dtype=grad_output.dtype, device=grad_output.device)
                     ret[:, :, 0::2] = grad_in[:, :, :, :, :, :].sum(3).transpose(3,4)
                     ret[:, :, 1::2] = grad_in[:, :, :, :, :, :].sum(4)
                     return ret, None
