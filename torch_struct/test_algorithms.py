@@ -154,7 +154,7 @@ def test_lc_custom():
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
 
-    struct = LinearChain(LogMemSemiring, _custom_grad=False)
+    struct = LinearChain(LogMemSemiring(10), _custom_grad=False)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     assert torch.isclose(s, s2).all()
@@ -169,7 +169,7 @@ def test_dp_custom():
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
 
-    struct = model(LogMemSemiring, _custom_grad=False)
+    struct = model(LogMemSemiring(10), _custom_grad=False)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     assert torch.isclose(s, s2).all()
@@ -185,7 +185,7 @@ def test_align_custom():
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
 
-    struct = Alignment(LogMemSemiring, _custom_grad=False)
+    struct = Alignment(LogMemSemiring(10), _custom_grad=False)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     assert torch.isclose(s, s2).all()

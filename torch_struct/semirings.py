@@ -233,44 +233,6 @@ def accumulate_(a, b, ret, fn, step=10000):
 #         torch.autograd.grad(ret[ind], (a, b), grad_output[ind])
 #     return a.grad, b.grad
 
-store = []
-class _LogMemDot(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, a, b):
-        ctx.save_for_backward(a, b)
-        store.append(a)
-        store.append(b)
-        st = []
-        batch = a.shape[1]
-        size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-        # return torch.logsumexp(a + b, dim=-1)
-
-        ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
-        accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1))
-        return ret
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        a, b = ctx.saved_tensors
-        size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-
-        fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
-        if True:
-            grad_a, grad_b = unaccumulate_(
-                a, b, grad_output, fn
-            )
-        else:
-            asum, bsum = [], []
-            for i, (x, y) in enumerate(zip(a.shape, b.shape)):
-                if x == 1:
-                    asum.append(i)
-                if y == 1:
-                    bsum.append(i)
-            back = fn(a, b, grad_output)
-            grad_a = back.sum(dim=asum, keepdim=True)
-            grad_b = back.sum(dim=bsum, keepdim=True)
-
-        return grad_a, grad_b
 
         # torch.grad(grad_output)
         # batch = a.shape[1]
@@ -281,31 +243,73 @@ class _LogMemDot(torch.autograd.Function):
         # grad_b = back.sum(dim=bsum, keepdim=True)
         
 
+def LogMemSemiring(max_size=100000):
+    store = []
+    class _LogMemDot(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, a, b):
+            ctx.save_for_backward(a, b)
+            store.append(a)
+            store.append(b)
+            st = []
+            batch = a.shape[1]
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+            # return torch.logsumexp(a + b, dim=-1)
 
-class LogMemSemiring(_BaseLog):
-    """
-    Implements the log-space semiring (logsumexp, +, -inf, 0).
+            ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+            accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1), step=max_size // a.shape[-1] + 2)
+            return ret
 
-    Gradients give marginals.
-    """
+        @staticmethod
+        def backward(ctx, grad_output):
+            a, b = ctx.saved_tensors
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
-    @staticmethod
-    def sum(xs, dim=-1):
-        return torch.logsumexp(xs, dim=dim)
+            fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
+            if True:
+                grad_a, grad_b = unaccumulate_(
+                    a, b, grad_output, fn,
+                    step=max_size // a.shape[-1] + 2 
+                )
+            else:
+                asum, bsum = [], []
+                for i, (x, y) in enumerate(zip(a.shape, b.shape)):
+                    if x == 1:
+                        asum.append(i)
+                    if y == 1:
+                        bsum.append(i)
+                back = fn(a, b, grad_output)
+                grad_a = back.sum(dim=asum, keepdim=True)
+                grad_b = back.sum(dim=bsum, keepdim=True)
 
-    @classmethod
-    def dot(cls, a, b):
-        "Dot product along last dim."
-        return _LogMemDot.apply(a, b)
-        # return cls.sum(cls.times(*ls))
+            return grad_a, grad_b
 
-    @classmethod
-    def dot_grad(cls, a, b):
-        "Dot product along last dim."
-        c = a + b
-        part = torch.logsumexp(c, dim=-1)
-        return part, (c - part.unsqueeze(-1)).exp()
 
+
+    class _LogMemSemiring(_BaseLog):
+        """
+        Implements the log-space semiring (logsumexp, +, -inf, 0).
+
+        Gradients give marginals.
+        """
+
+        @staticmethod
+        def sum(xs, dim=-1):
+            return torch.logsumexp(xs, dim=dim)
+
+        @classmethod
+        def dot(cls, a, b):
+            "Dot product along last dim."
+            return _LogMemDot.apply(a, b, )
+            # return cls.sum(cls.times(*ls))
+
+        @classmethod
+        def dot_grad(cls, a, b):
+            "Dot product along last dim."
+            c = a + b
+            part = torch.logsumexp(c, dim=-1)
+            return part, (c - part.unsqueeze(-1)).exp()
+    return _LogMemSemiring
 
 class MaxSemiring(_BaseLog):
     """
