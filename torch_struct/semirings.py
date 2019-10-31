@@ -157,7 +157,7 @@ class _LogMemDot(torch.autograd.Function):
         batch = a.shape[1]
         for p in range(0, batch, 10):
             back = torch.softmax(a[:, p:p+10] + b[:, p:p+10], dim=-1) \
-                        .mul(grad_output.unsqueeze(-1))
+                        .mul(grad_output[:, p:p+10].unsqueeze(-1))
             grad_a[:, p:p+10] = back.sum(dim=asum, keepdim=True)
             grad_b[:, p:p+10] = back.sum(dim=bsum, keepdim=True)
         return grad_a, grad_b
