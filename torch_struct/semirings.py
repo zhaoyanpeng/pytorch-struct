@@ -136,22 +136,17 @@ class _LogMemDot(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         a, b = ctx.saved_tensors
-        print(a.shape, b.shape)
         back = torch.softmax(a + b, dim=-1) \
                     .mul(grad_output.unsqueeze(-1))
-        # ashape, bshape = [], []
         asum, bsum = [], []
         for i, (x, y) in enumerate(zip(a.shape, b.shape)):
             if x == 1:
                 asum.append(i)
             if y == 1:
                 bsum.append(i)
-            # ashape.append(x)
-            # bshape.append(y)
 
         grad_a = a.clone().zero_()
         grad_b = b.clone().zero_()
-        print(grad_a.shape, grad_b.shape, asum, bsum)
         grad_a[:] = back.sum(dim=asum, keepdim=True)
         grad_b[:] = back.sum(dim=bsum, keepdim=True)
         return grad_a, grad_b
