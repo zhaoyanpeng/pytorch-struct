@@ -181,7 +181,7 @@ def test_dp_custom():
 def test_align_custom():
     model = Alignment
     #vals, _ = model._rand()
-    vals = torch.rand(1, 10, 10, 3)
+    vals = torch.rand(1, 5, 5, 3)
 
     struct = Alignment(LogSemiring)
     marginals = struct.marginals(vals)

@@ -139,8 +139,8 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     a_grad = a.clone().fill_(0)    
     b_grad = b.clone().fill_(0)
     # print("chcek", a_grad.shape)    
-    # a_grad = torch.tensor(0.0, device=a.device).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
-    # b_grad = torch.tensor(0.0, device=b.device).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
+    a_grad2 = torch.tensor(0.0, device=a.device, dtype=a.dtype).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
+    b_grad2 = torch.tensor(0.0, device=b.device, dtype=b.dtype).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
 
     total = 1
     for s in grad_output.shape:
@@ -173,7 +173,11 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
         print(len(a_ind), q.shape, a_grad.shape)
         a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
         b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
-    return a_grad, b_grad
+        a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
+        b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
+        assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
+        
+    return a_grad2, b_grad2
 
 
 def accumulate_(a, b, ret, fn, step=10000):
