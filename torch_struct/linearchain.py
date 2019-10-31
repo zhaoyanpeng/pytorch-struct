@@ -74,7 +74,8 @@ class LinearChain(_Struct):
             chart[0][:, b, :end] = log_potentials[:, b, :end]
 
         # Scan
-        
+
+        backwards = []
         if self._custom_grad and semiring.dg:
             class Merge(torch.autograd.Function):
                 @staticmethod
@@ -87,6 +88,7 @@ class LinearChain(_Struct):
                     )
                     ctx.shape = x.shape
                     ctx.save_for_backward(grad)
+                    backwards.append(grad)
                     return val
 
                 @staticmethod
@@ -109,11 +111,17 @@ class LinearChain(_Struct):
                     x[:, :, 1 : : 2].view(ssize, batch, size, C, 1, C),
                 )
 
+        print("setup")
+        reporter = MemReporter()
+        reporter.report()
+
         size = bin_N
         for n in range(1, log_N + 1):
             size = int(size / 2)
             chart[n] = merge(chart[n - 1], size)
         v = semiring.sum(semiring.sum(chart[-1][:, :, 0]))
+        
+        print("real")
         reporter = MemReporter()
         reporter.report()
 
