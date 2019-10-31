@@ -262,6 +262,7 @@ def LogMemSemiring(max_size=100000):
 
         @staticmethod
         def backward(ctx, grad_output):
+            print("backing out", a.shape)
             a, b = ctx.saved_tensors
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
