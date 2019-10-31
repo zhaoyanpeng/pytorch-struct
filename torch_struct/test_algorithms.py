@@ -158,6 +158,21 @@ def test_lc_custom():
     print(marginals2)
     assert torch.isclose(marginals, marginals2).all()
 
+def test_align_custom():
+    model = Alignment
+    vals, _ = model._rand()
+    struct = Alignment(LogSemiring)
+    marginals = struct.marginals(vals)
+    s = struct.sum(vals)
+    
+    struct = Alignment(LogSemiring, _custom_grad=True)
+    marginals2 = struct.marginals(vals)
+    s2 = struct.sum(vals)
+    assert torch.isclose(s, s2).all()
+    print(marginals)
+    print(marginals2)
+    assert torch.isclose(marginals, marginals2).all()
+
 
 @given(data())
 @settings(max_examples=50, deadline=None)
