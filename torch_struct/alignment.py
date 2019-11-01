@@ -216,7 +216,31 @@ class Alignment(_Struct):
 
             class Merge(torch.autograd.Function):
                 @staticmethod
-                def forward(ctx, left, right, rsize, nrsize):
+                def forward(ctx, xa, xb, rsize, size):
+                    nrsize = (rsize - 1) * 2 + 3
+                    st = []
+                    left = (
+                        pad_conv(
+                            demote(xa[:, :, 0 : size * 2 : 2, :], 3), nrsize, 7, semiring, 2, 2
+                        )
+                        .transpose(-1, -2)
+                        .view(ssize, batch, size, bin_MN, 1, LOC, LOC, 3, nrsize, rsize + 2)
+                    )
+
+                    right = (
+                        pad_conv(
+                        pad(
+                                demote(xb[:, :, 1 : size * 2 : 2, :, :], 4), 
+                            1,
+                            1,
+                            -1,
+                            semiring,
+                        ), nrsize, 3, semiring)
+                        .transpose(-1, -2)
+                        .view(ssize, batch, size, bin_MN, LOC, 1, LOC, 1, 3, nrsize, rsize)
+                    )
+
+
                     st = []
                     grads = []
                     for op in (Up, Down, Mid):
@@ -249,34 +273,56 @@ class Alignment(_Struct):
                     )
                     return torch.stack(st, dim=-1)
 
-                @staticmethod
-                def backward(ctx, grad_output):
-                    grad, ls, rs, v = ctx.saved_tensors
-                    rsize, nrsize = v.tolist()
-                    grad_in = grad.mul(grad_output.unsqueeze(-2))
-                    left = torch.zeros(
-                        *ls.tolist(), dtype=grad_output.dtype, device=grad_output.device
-                    )
-                    right = torch.zeros(
-                        *rs.tolist(), dtype=grad_output.dtype, device=grad_output.device
-                    )
-                    # grad_in = grad_in.permute(0, 1, 2, 7, 3, 4, 5, 6, 8)
-                    grad_in = grad_in.permute(9, 0, 1, 2, 4, 5, 6, 7, 3, 8)
-                    for i, op in enumerate((Up, Down, Mid)):
-                        top, bot = rsize + 1, 1
-                        if op == Up:
-                            top, bot = rsize + 2, 2
-                        if op == Down:
-                            top, bot = rsize, 0
+                # @staticmethod
+                # def backward(ctx, grad_output):
+                #     grad, ls, rs, v = ctx.saved_tensors
+                #     rsize, nrsize = v.tolist()
+                #     grad_in = grad.mul(grad_output.unsqueeze(-2))
+                #     left = torch.zeros(
+                #         *ls.tolist(), dtype=grad_output.dtype, device=grad_output.device
+                #     )
+                #     right = torch.zeros(
+                #         *rs.tolist(), dtype=grad_output.dtype, device=grad_output.device
+                #     )
+                #     # grad_in = grad_in.permute(0, 1, 2, 7, 3, 4, 5, 6, 8)
+                #     grad_in = grad_in.permute(9, 0, 1, 2, 4, 5, 6, 7, 3, 8)
+                #     for i, op in enumerate((Up, Down, Mid)):
+                #         top, bot = rsize + 1, 1
+                #         if op == Up:
+                #             top, bot = rsize + 2, 2
+                #         if op == Down:
+                #             top, bot = rsize, 0
 
-                        left[:, :, :, :, :, Open, :, :, :, bot:top] += grad_in[i]
-                        right[:, :, :, :, :, Open, :, 0, op, :, :] += grad_in[i].sum(-3)
-                    return left, right, None, None, None
+                #         left[:, :, :, :, :, Open, :, :, :, bot:top] += grad_in[i]
+                #         right[:, :, :, :, :, Open, :, 0, op, :, :] += grad_in[i].sum(-3)
+                #     return left, right, None, None, None
 
             merge = Merge.apply
         else:
+            def merge(xa, xb, rsize, size):
+                nrsize = (rsize - 3) * 2 + 3
+                left = (
+                    pad_conv(
+                        demote(xa[:, :, 0 : size * 2 : 2, :], 3), nrsize, 7, semiring, 2, 2
+                    )
+                    .transpose(-1, -2)
+                    .view(ssize, batch, size, bin_MN, 1, LOC, LOC, 3, nrsize, rsize + 2)
+                )
 
-            def merge(left, right, rsize, nrsize):
+                right = (
+                    pad_conv(
+                    pad(
+                            demote(xb[:, :, 1 : size * 2 : 2, :, :], 4), 
+                        1,
+                        1,
+                        -1,
+                        semiring,
+                    ), nrsize, 3, semiring)
+                    .transpose(-1, -2)
+                    .view(ssize, batch, size, bin_MN, LOC, 1, LOC, 1, 3, nrsize, rsize)
+                )
+
+
                 st = []
                 for op in (Up, Down, Mid):
                     top, bot = rsize + 1, 1
@@ -300,30 +346,7 @@ class Alignment(_Struct):
         def merge2(xa, xb, size, rsize):
             nrsize = (rsize - 1) * 2 + 3
             rsize += 2
-            st = []
-            left = (
-                pad_conv(
-                    demote(xa[:, :, 0 : size * 2 : 2, :], 3), nrsize, 7, semiring, 2, 2
-                )
-                .transpose(-1, -2)
-                .view(ssize, batch, size, bin_MN, 1, LOC, LOC, 3, nrsize, rsize + 2)
-            )
-
-            right = (
-                pad_conv(
-                pad(
-                        demote(xb[:, :, 1 : size * 2 : 2, :, :], 4), 
-                    1,
-                    1,
-                    -1,
-                    semiring,
-                ), nrsize, 3, semiring)
-                .transpose(-1, -2)
-                .view(ssize, batch, size, bin_MN, LOC, 1, LOC, 1, 3, nrsize, rsize)
-            )
-
-            st = merge(left, right, rsize, nrsize)
-
+            st = merge(xa, xb, rsize, size)
             if self.local:
                 left_ = pad(
                     xa[:, :, 0::2, :, :, Close, :, :],
@@ -344,8 +367,8 @@ class Alignment(_Struct):
                 st2.append(torch.stack([semiring.zero_(right.clone()), right], dim=-2))
                 st = torch.cat([st, torch.stack(st2, dim=-1)], dim=-1)
             return semiring.sum(st)
-        # reporter = MemReporter()
-        # reporter.report()
+        reporter = MemReporter()
+        reporter.report()
 
         size = bin_MN // 2
         rsize = 2
@@ -369,8 +392,8 @@ class Alignment(_Struct):
                 :, :, 0, M - N + (charta[-1].shape[3] // 2), N, Open, Open, Mid
             ]
 
-        # reporter = MemReporter()
-        # reporter.report()
+        reporter = MemReporter()
+        reporter.report()
         return v, [log_potentials], None
 
     @staticmethod

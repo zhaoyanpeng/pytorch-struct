@@ -139,8 +139,8 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     a_grad = a.clone().fill_(0)    
     b_grad = b.clone().fill_(0)
     # print("chcek", a_grad.shape)    
-    a_grad2 = torch.tensor(0.0, device=a.device, dtype=a.dtype).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
-    b_grad2 = torch.tensor(0.0, device=b.device, dtype=b.dtype).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
+    # a_grad2 = torch.tensor(0.0, device=a.device, dtype=a.dtype).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
+    # b_grad2 = torch.tensor(0.0, device=b.device, dtype=b.dtype).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
 
     total = 1
     for s in grad_output.shape:
@@ -170,14 +170,13 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
             
         q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
         # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
-        print(len(a_ind), q.shape, a_grad.shape)
         a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
         b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
-        a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
-        b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
-        assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
+        # a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
+        # b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
+        # assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
         
-    return a_grad2, b_grad2
+    return a_grad, b_grad
 
 
 def accumulate_(a, b, ret, fn, step=10000):
@@ -271,9 +270,9 @@ def LogMemSemiring(max_size=100000):
         def backward(ctx, grad_output):
 
             a, b = ctx.saved_tensors
-            # print("backing out", a.shape)
-            # reporter = MemReporter()
-            # reporter.report()
+            print("backing out", a.shape)
+            reporter = MemReporter()
+            reporter.report()
 
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
@@ -294,9 +293,9 @@ def LogMemSemiring(max_size=100000):
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
                 
-            # print("backing out 2", a.shape)
-            # reporter = MemReporter()
-            # reporter.report()
+            print("backing out 2", a.shape)
+            reporter = MemReporter()
+            reporter.report()
 
                 
             return grad_a, grad_b
