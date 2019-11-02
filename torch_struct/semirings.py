@@ -257,15 +257,15 @@ def accumulate_(a, b, ret, fn, step=10000):
         
 
 def LogMemSemiring(max_size=100000):
-    store = []
+    # store = []
     class _LogMemDot(torch.autograd.Function):
         @staticmethod
         def forward(ctx, a, b):
             ctx.save_for_backward(a, b)
 
             
-            store.append(a)
-            store.append(b)
+            # store.append(a)
+            # store.append(b)
             st = []
             batch = a.shape[1]
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
@@ -313,8 +313,8 @@ def LogMemSemiring(max_size=100000):
         def forward(ctx, a, b, band, o1, o2):
             ctx.save_for_backward(a, b, torch.tensor([band, o1, o2]))
             
-            store.append(a)
-            store.append(b)
+            # store.append(a)
+            # store.append(b)
             return sparse_banded_combine(a, b, band, o1, o2,
                                          semiring=LogSemiring,
                                          fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
