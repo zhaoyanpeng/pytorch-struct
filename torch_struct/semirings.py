@@ -310,13 +310,14 @@ def LogMemSemiring(max_size=100000):
 
     class _LogMemBandedDot(torch.autograd.Function):
         @staticmethod
-        def forward(ctx, a, b, banded, o1, o2):
-            ctx.save_for_backward(a, b)
+        def forward(ctx, a, b, band, o1, o2):
+            ctx.save_for_backward(a, b, torch.tensor([band, o1, o2]))
             
             store.append(a)
             store.append(b)
             return sparse_banded_combine(a, b, band, o1, o2,
-                                         semiring=cls, fn=cls.dot)
+                                         semiring=LogSemiring,
+                                         fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
 
             # return torch.logsumexp(a + b, dim=-1)
             # st = []
@@ -329,16 +330,22 @@ def LogMemSemiring(max_size=100000):
 
         @staticmethod
         def backward(ctx, grad_output):
-            a, b = ctx.saved_tensors
+            a, b, opt = ctx.saved_tensors
+            band, o1, o2 = opt.tolist()
             print("backing out", a.shape)
             reporter = MemReporter()
             reporter.report()
 
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-            def fn(a,b,g): 
+            def fn(a, b, g):
+                def inner(a, b):
+                    # print("inner", a.shape, b.shape)
+                    return torch.softmax(a+b, -1).transpose(-1, -3).transpose(-1, -2)
                 p = sparse_banded_combine(a, b, band, o1, o2,
-                                          semiring=cls, fn=lambda a, b: torch.softmax(a+b))
-                return p.mul(g.unsqueeze(-1))
+                                          semiring=LogSemiring,
+                                          fn=inner)
+                p = p.transpose(-1, -3).transpose(-2, -3)
+                return p.mul(g.unsqueeze(-1)).sum(-1)
             
             if True:
                 asum, bsum = [], []
@@ -356,7 +363,7 @@ def LogMemSemiring(max_size=100000):
             reporter = MemReporter()
             reporter.report()
                 
-            return grad_a, grad_b
+            return grad_a, grad_b, None, None, None
 
 
 

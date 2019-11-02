@@ -7,6 +7,8 @@ from .alignment import Alignment
 from .semirings import (
     LogSemiring,
     KMaxSemiring,
+    LogMemSemiring,
+    Semiring,
     SparseMaxSemiring,
     MaxSemiring,
     StdSemiring,
@@ -35,6 +37,23 @@ def test_simple_a(batch, N, C):
     LinearChain(SampledSemiring).marginals(vals)
 
     LinearChain(MultiSampledSemiring).marginals(vals)
+
+def test_align_custom():
+    model = Alignment
+    #vals, _ = model._rand()
+    vals = torch.rand(1, 5, 5, 3)
+
+    struct = Alignment(LogSemiring)
+    marginals = struct.marginals(vals)
+    s = struct.sum(vals)
+
+    struct = Alignment(LogMemSemiring(10))
+    marginals2 = struct.marginals(vals)
+    s2 = struct.sum(vals)
+    assert torch.isclose(s, s2).all()
+    print(marginals)
+    print(marginals2)
+    assert torch.isclose(marginals, marginals2).all()
 
 
 @given(smint, smint, smint, smint)
