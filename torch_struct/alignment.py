@@ -2,6 +2,7 @@ import torch
 from .helpers import _Struct
 import math
 from .sparse import *
+from pytorch_memlab import MemReporter
 
 class Alignment(_Struct):
     def _check_potentials(self, edge, lengths=None):
@@ -147,6 +148,9 @@ class Alignment(_Struct):
             size = int(size / 2)
             rsize = rsize * 2
             chart[n] = merge(chart[n - 1], size, rsize+1)
+        reporter = MemReporter()
+        reporter.report()
+
         v = chart[-1][:, :, 0, M, N, Mid]
         return v, [log_potentials], None
 
