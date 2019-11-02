@@ -38,9 +38,9 @@ class Alignment(_Struct):
         Down, Mid, Up = 0, 1, 2
 
         # Create a chart N, N, back
-        chart = self._make_chart(
-            log_MN + 1, (batch, bin_MN, bin_MN, bin_MN, 3), log_potentials, force_grad
-        )
+        chart = [self._make_chart(
+            1, (batch, bin_MN // pow(2, i), bin_MN, bin_MN, 3), log_potentials, force_grad
+        )[0] if  i <= 1 else None for i in range(log_MN + 1)]
 
         # Init
         # This part is complicated. Rotate the scores by 45% and
@@ -149,7 +149,7 @@ class Alignment(_Struct):
         for n in range(2, log_MN + 1):
             size = int(size / 2)
             rsize = rsize * 2
-            chart[n][:, :, :size] = merge(chart[n - 1], size, rsize+1)
+            chart[n] = merge(chart[n - 1], size, rsize+1)
         v = chart[-1][:, :, 0, M, N, Mid]
         return v, [log_potentials], None
 
