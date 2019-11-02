@@ -3,7 +3,6 @@ from .helpers import _Struct
 import math
 from .sparse import *
 
-
 class Alignment(_Struct):
     def _check_potentials(self, edge, lengths=None):
         batch, N_1, M_1, x = edge.shape
@@ -130,12 +129,10 @@ class Alignment(_Struct):
                                      right[..., op, :,  c:d].unsqueeze(-3))
 
                 else:
-                    v = sparse_banded_combine(
+                    v = semiring.banded_dot(
                         left[..., :],
                         right[..., op,  :, :].transpose(-2, -1),
-                        rsize, c, a, semiring=semiring,
-                        fn=lambda a, b: semiring.dot(a, b)
-                    )
+                        rsize, c, a)
 
                 v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
                     .permute(0, 1, 2, 5, 4, 3) 

@@ -2,6 +2,7 @@ import torch
 import torch.distributions
 import numpy as np
 from pytorch_memlab import MemReporter
+from .sparse import *
 
 class Semiring:
     """
@@ -22,7 +23,13 @@ class Semiring:
     def dot(cls, *ls):
         "Dot product along last dim."
         return cls.sum(cls.times(*ls))
+    
+    @classmethod
+    def banded_dot(cls, a, b, band, offset_a, offset_b):
+        return sparse_banded_combine(a, b, band, offset_a, offset_b,
+                                     semiring=cls,fn=cls.dot)
 
+    
     @classmethod
     def times(cls, *ls):
         "Multiply a list of tensors together"
@@ -270,7 +277,6 @@ def LogMemSemiring(max_size=100000):
 
         @staticmethod
         def backward(ctx, grad_output):
-
             a, b = ctx.saved_tensors
             print("backing out", a.shape)
             reporter = MemReporter()
@@ -285,6 +291,56 @@ def LogMemSemiring(max_size=100000):
                     step=max_size // a.shape[-1] + 2 
                 )
             else:
+                asum, bsum = [], []
+                for i, (x, y) in enumerate(zip(a.shape, b.shape)):
+                    if x == 1:
+                        asum.append(i)
+                    if y == 1:
+                        bsum.append(i)
+                back = fn(a, b, grad_output)
+                grad_a = back.sum(dim=asum, keepdim=True)
+                grad_b = back.sum(dim=bsum, keepdim=True)
+                
+            print("backing out 2",
+                  grad_a.shape, grad_b.shape, a.shape)
+            reporter = MemReporter()
+            reporter.report()
+                
+            return grad_a, grad_b
+
+    class _LogMemBandedDot(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, a, b, banded, o1, o2):
+            ctx.save_for_backward(a, b)
+            
+            store.append(a)
+            store.append(b)
+            return sparse_banded_combine(a, b, band, o1, o2,
+                                         semiring=cls, fn=cls.dot)
+
+            # return torch.logsumexp(a + b, dim=-1)
+            # st = []
+            # batch = a.shape[1]
+            # size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+            # ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+            # accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1),
+            #             step=max_size // a.shape[-1] + 2)
+            # return ret
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            a, b = ctx.saved_tensors
+            print("backing out", a.shape)
+            reporter = MemReporter()
+            reporter.report()
+
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+            def fn(a,b,g): 
+                p = sparse_banded_combine(a, b, band, o1, o2,
+                                          semiring=cls, fn=lambda a, b: torch.softmax(a+b))
+                return p.mul(g.unsqueeze(-1))
+            
+            if True:
                 asum, bsum = [], []
                 for i, (x, y) in enumerate(zip(a.shape, b.shape)):
                     if x == 1:
@@ -321,6 +377,11 @@ def LogMemSemiring(max_size=100000):
             return _LogMemDot.apply(a, b, )
             # return cls.sum(cls.times(*ls))
 
+        @classmethod
+        def banded_dot(cls, a, b, band, offset_a, offset_b):
+            return _LogMemBandedDot.apply(a, b, band, offset_a, offset_b)
+        
+            
         @classmethod
         def dot_grad(cls, a, b):
             "Dot product along last dim."
