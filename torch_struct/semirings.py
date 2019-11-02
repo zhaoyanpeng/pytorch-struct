@@ -1,6 +1,7 @@
 import torch
 import torch.distributions
-
+import numpy as np
+from pytorch_memlab import MemReporter
 
 class Semiring:
     """
@@ -59,6 +60,8 @@ class Semiring:
     def plus(cls, a, b):
         return cls.sum(torch.stack([a, b], dim=-1))
 
+    dg = False
+
 
 class _Base(Semiring):
     @staticmethod
@@ -114,10 +117,217 @@ class LogSemiring(_BaseLog):
     Gradients give marginals.
     """
 
+    dg = True
+
     @staticmethod
     def sum(xs, dim=-1):
         return torch.logsumexp(xs, dim=dim)
 
+    @classmethod
+    def dot_grad(cls, a, b):
+        "Dot product along last dim."
+        c = a + b
+        part = torch.logsumexp(c, dim=-1)
+        return part, (c - part.unsqueeze(-1)).exp()
+
+
+def back(x):
+    x.backward()
+    
+def unaccumulate_(a, b, grad_output, fn, step=10000):
+    slices = []
+    a_grad = a.clone().fill_(0)    
+    b_grad = b.clone().fill_(0)
+    # print("chcek", a_grad.shape)    
+    # a_grad2 = torch.tensor(0.0, device=a.device, dtype=a.dtype).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
+    # b_grad2 = torch.tensor(0.0, device=b.device, dtype=b.dtype).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
+
+    total = 1
+    for s in grad_output.shape:
+        slices.append(slice(s))
+        total *= s
+        
+    a_one = []
+    for i, v in enumerate(a.shape[:-1]):
+        if v == 1:
+            a_one.append(i)
+    b_one = []
+    for i, v in enumerate(b.shape[:-1]):
+        if v == 1:
+            b_one.append(i)
+            
+    indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape), -1)
+    
+    for p in range(0, total, step):
+        ind = indices[:, p : p + step].unbind()
+
+        a_ind = list(ind)
+        for v in a_one:
+            a_ind[v] = a_ind[v].clone().fill_(0).long()
+        b_ind = list(ind)
+        for v in b_one:
+            b_ind[v] = b_ind[v].clone().fill_(0).long()
+            
+        q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
+        # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
+        a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
+        b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
+        # a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
+        # b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
+        # assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
+        
+    return a_grad, b_grad
+
+
+def accumulate_(a, b, ret, fn, step=10000):
+    slices = []
+    total = 1
+    for s in ret.shape:
+        slices.append(slice(s))
+        total *= s
+    
+    a_one = []
+    for i, v in enumerate(a.shape[:-1]):
+        if v == 1:
+            a_one.append(i)
+    b_one = []
+    for i, v in enumerate(b.shape[:-1]):
+        if v == 1:
+            b_one.append(i)
+    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+    for p in range(0, total, step):
+        
+        ind = indices[:, p : p + step].unbind()
+        if ind[0].shape[0] == 0:
+            continue
+        a_ind = list(ind)
+        for v in a_one:
+            a_ind[v] = a_ind[v].clone().fill_(0)
+        b_ind = list(ind)
+        for v in b_one:
+            b_ind[v] = b_ind[v].clone().fill_(0)
+        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+
+
+# def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
+#     slices = []
+#     total = 1
+#     a = a.clone().requires_grad_(True)
+#     b = b.clone().requires_grad_(True)
+#     for s in ret.shape:
+#         slices.append(slice(s))
+#         total *= s
+#     a_one = []
+#     for i, v in enumerate(a.shape):
+#         if v == 1:
+#             a_one.append(i)
+#     b_one = []
+#     for i, v in enumerate(b.shape):
+#         if v == 1:
+#             b_one.append(i)
+#     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
+#     for p in range(0, total, step):
+#         ind = indices[:, p:p+step].unbind()
+#         a_ind = list(ind)
+#         for v in a_one:
+#             a_ind[v] = a_ind[v].clone().fill_(0)
+#         b_ind = list(ind)
+#         for v in b_one:
+#             b_ind[v] = b_ind[v].clone().fill_(0)
+#         ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+#         print(ret[ind])
+#         torch.autograd.grad(ret[ind], (a, b), grad_output[ind])
+#     return a.grad, b.grad
+
+
+        # torch.grad(grad_output)
+        # batch = a.shape[1]
+        # for p in range(0, batch, 10):
+        # back = torch.softmax(a + b, dim=-1) \
+        #             .mul(grad_output.unsqueeze(-1))
+        # grad_a = back.sum(dim=asum, keepdim=True)
+        # grad_b = back.sum(dim=bsum, keepdim=True)
+        
+
+def LogMemSemiring(max_size=100000):
+    store = []
+    class _LogMemDot(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, a, b):
+            ctx.save_for_backward(a, b)
+
+            
+            store.append(a)
+            store.append(b)
+            st = []
+            batch = a.shape[1]
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+            # return torch.logsumexp(a + b, dim=-1)
+
+            ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+            accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1), step=max_size // a.shape[-1] + 2)
+            return ret
+
+        @staticmethod
+        def backward(ctx, grad_output):
+
+            a, b = ctx.saved_tensors
+            print("backing out", a.shape)
+            reporter = MemReporter()
+            reporter.report()
+
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+
+            fn = lambda a, b, g: torch.softmax(a + b, dim=-1).mul(g.unsqueeze(-1))
+            if True:
+                grad_a, grad_b = unaccumulate_(
+                    a, b, grad_output, fn,
+                    step=max_size // a.shape[-1] + 2 
+                )
+            else:
+                asum, bsum = [], []
+                for i, (x, y) in enumerate(zip(a.shape, b.shape)):
+                    if x == 1:
+                        asum.append(i)
+                    if y == 1:
+                        bsum.append(i)
+                back = fn(a, b, grad_output)
+                grad_a = back.sum(dim=asum, keepdim=True)
+                grad_b = back.sum(dim=bsum, keepdim=True)
+                
+            print("backing out 2",
+                  grad_a.shape, grad_b.shape, a.shape)
+            reporter = MemReporter()
+            reporter.report()
+                
+            return grad_a, grad_b
+
+
+
+    class _LogMemSemiring(_BaseLog):
+        """
+        Implements the log-space semiring (logsumexp, +, -inf, 0).
+
+        Gradients give marginals.
+        """
+
+        @staticmethod
+        def sum(xs, dim=-1):
+            return torch.logsumexp(xs, dim=dim)
+
+        @classmethod
+        def dot(cls, a, b):
+            "Dot product along last dim."
+            return _LogMemDot.apply(a, b, )
+            # return cls.sum(cls.times(*ls))
+
+        @classmethod
+        def dot_grad(cls, a, b):
+            "Dot product along last dim."
+            c = a + b
+            part = torch.logsumexp(c, dim=-1)
+            return part, (c - part.unsqueeze(-1)).exp()
+    return _LogMemSemiring
 
 class MaxSemiring(_BaseLog):
     """
@@ -126,35 +336,27 @@ class MaxSemiring(_BaseLog):
     Gradients give argmax.
     """
 
+    dg = True
+
     @staticmethod
     def sum(xs, dim=-1):
         return torch.max(xs, dim=dim)[0]
+
+    @classmethod
+    def dot_grad(cls, a, b):
+        "Dot product along last dim."
+        c = a + b
+        part, argmax = torch.max(c, dim=-1)
+        return part, torch.nn.functional.one_hot(argmax, a.shape[-1])
 
     @staticmethod
     def sparse_sum(xs, dim=-1):
         m, a = torch.max(xs, dim=dim)
         return m, (torch.zeros(a.shape).long(), a)
 
-
 def TempMax(alpha):
-    class _TempMax(_BaseLog):
-        """
-        Implements a max forward, hot softmax backward.
-        """
-
-        @staticmethod
-        def sum(xs, dim=-1):
-            pass
-
-        @staticmethod
-        def sparse_sum(xs, dim=-1):
-            m, _ = torch.max(xs, dim=dim)
-            a = torch.softmax(alpha * xs, dim)
-            return m, (torch.zeros(a.shape[:-1]).long(), a)
-
-    return _TempMax
-
-
+    pass
+    
 def KMaxSemiring(k):
     """
     Implements the k-max semiring (kmax, +, [-inf, -inf..], [0, -inf, ...]).
