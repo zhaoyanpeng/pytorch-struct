@@ -10,9 +10,9 @@ def pad(x, v, dim, offset=0, semiring=None):
     orig =x.shape[dim]
     mag = abs(offset)
     s[dim] = v // 2 + mag
-    p1 = torch.zeros(s)
+    p1 = torch.zeros(s, dtype=x.dtype, device=x.device)
     s[dim] = v // 2 + mag
-    p2 = torch.zeros(s)
+    p2 = torch.zeros(s, dtype=x.dtype, device=x.device)
     if semiring:
         semiring.zero_(p1)
         semiring.zero_(p2)
@@ -29,7 +29,8 @@ def sparse_to_dense(sparse, semiring=None, offset=0):
     off_size = sparse.shape[-1]
     p = off_size-1
     mag = abs(offset)
-    y = torch.zeros(*sparse.shape[:-2], n_size + p +mag, n_size+mag)
+    y = torch.zeros(*sparse.shape[:-2], n_size + p +mag, n_size+mag,
+                    dtype=sparse.dtype, device=sparse.device)
     if semiring is not None:
         semiring.zero_(y)
     r = y.unfold(-2, off_size, 1)
