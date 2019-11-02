@@ -332,7 +332,7 @@ def LogMemSemiring(max_size=100000):
         def backward(ctx, grad_output):
             a, b, opt = ctx.saved_tensors
             band, o1, o2 = opt.tolist()
-            print("backing out", a.shape)
+            print("backing out banded", a.shape, b)
             reporter = MemReporter()
             reporter.report()
 
@@ -358,8 +358,8 @@ def LogMemSemiring(max_size=100000):
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
                 
-            print("backing out 2",
-                  grad_a.shape, grad_b.shape, a.shape)
+            print("backing out banded 2",
+                  grad_a.shape, grad_b.shape, a.shape, b)
             reporter = MemReporter()
             reporter.report()
                 
