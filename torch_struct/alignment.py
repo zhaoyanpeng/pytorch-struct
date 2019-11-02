@@ -107,7 +107,6 @@ class Alignment(_Struct):
 
         # Scan
         def merge(x, size, rsize):
-            print(rsize)
             left = (
                 x[:, :, 0 : size * 2 : 2]
                 .permute(0, 1, 2, 5, 4, 3)
@@ -126,22 +125,20 @@ class Alignment(_Struct):
                 if op == Down:
                     a, b, c, d = 0, bin_MN - 1, 1, bin_MN
 
-                
-                v = semiring.dot(left[..., a:b].unsqueeze(-2),
-                                 right[..., op, :,  c:d].unsqueeze(-3))
+                if rsize > 100: 
+                    v = semiring.dot(left[..., a:b].unsqueeze(-2),
+                                     right[..., op, :,  c:d].unsqueeze(-3))
 
-                # if op == Mid:
-                v2 = sparse_banded_combine(
-                    left[..., :],
-                    right[..., op,  :, :].transpose(-2, -1),
-                    rsize, c, a, semiring=semiring,
-                    fn=lambda a, b: semiring.dot(a, b)
-                )
-                v = v2                    
+                else:
+                    v = sparse_banded_combine(
+                        left[..., :],
+                        right[..., op,  :, :].transpose(-2, -1),
+                        rsize, c, a, semiring=semiring,
+                        fn=lambda a, b: semiring.dot(a, b)
+                    )
+
                 v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
                     .permute(0, 1, 2, 5, 4, 3) 
-                
-                
                 
                 st.append(v)
             st = torch.stack(st, dim=-1)

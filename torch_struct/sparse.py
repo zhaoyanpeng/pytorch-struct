@@ -33,9 +33,7 @@ def sparse_to_dense(sparse, semiring=None, offset=0):
     if semiring is not None:
         semiring.zero_(y)
     r = y.unfold(-2, off_size, 1)
-    print("r", r.shape)
     r = r.diagonal(0, -3, -2).transpose(-1, -2)
-    print(r.shape)
 
     r[..., :n_size, :] = sparse[:]
     if offset > 0:
