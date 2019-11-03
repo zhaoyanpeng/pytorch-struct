@@ -148,8 +148,8 @@ class Alignment(_Struct):
             size = int(size / 2)
             rsize = rsize * 2
             chart[n] = merge(chart[n - 1], size, rsize+1)
-        reporter = MemReporter()
-        reporter.report()
+        # reporter = MemReporter()
+        # reporter.report()
 
         v = chart[-1][:, :, 0, M, N, Mid]
         return v, [log_potentials], None

@@ -4,7 +4,6 @@ def pad(x, v, dim, offset=0, semiring=None):
     "Symmetric zero padding"
 
     assert v % 2 == 0
-    assert semiring is not None
     s = list(x.shape)
     offset = -offset
     orig =x.shape[dim]
@@ -24,7 +23,6 @@ def pad_to(x, v, dim, semiring=None):
     return pad(x, diff, dim, semiring=semiring)
 
 def sparse_to_dense(sparse, semiring=None, offset=0):
-    assert semiring is not None
     n_size = sparse.shape[-2]
     off_size = sparse.shape[-1]
     p = off_size-1
@@ -47,7 +45,6 @@ def sparse_to_dense(sparse, semiring=None, offset=0):
     return ret
     
 def dense_to_sparse(dense, band_size, semiring=None, offset=0):
-    assert semiring is not None
     assert band_size % 2 == 1
     n_dim = -2
     off_dim = -1
@@ -55,15 +52,16 @@ def dense_to_sparse(dense, band_size, semiring=None, offset=0):
     back = back.diagonal(0, off_dim-1, n_dim-1)
     return back.transpose(-2, -1)
 
-def sparse_combine(y, x, fn = lambda a, b: (a*b).sum(-1), semiring=None):
-    assert semiring is not None
+def sparse_combine(y, x, fn = lambda a, b: (a*b).sum(-1), semiring=None, back=False):
     n_dim = -2
     off_dim = -1
     n = x.shape[n_dim]
     x_width = x.shape[-1]
     y_width = y.shape[-1]
     x = pad_to(x, n + x_width + y_width - 2, n_dim, semiring=semiring).unfold(n_dim, x_width + y_width - 1, 1)
+    
     y = pad_to(y,  y_width + x_width + x_width -2, off_dim, semiring=semiring).unfold(off_dim, x_width, 1)
+
     x = x.transpose(-1, -2)
     return fn(x, y)
 
@@ -72,14 +70,49 @@ def get_banded(x, band):
     o = sparse_to_dense(sparse)
     return o.transpose(-2, -1)
 
-def sparse_banded_combine(x, y, b,
+def sparse_banded_combine(x_in, y_in, b,
                           offset_x=0,
                           offset_y=0,
                           semiring=None,
                           fn= lambda a, b: (a*b).sum(-1)):
     "compute torch.matmul b1, b2"
-    assert semiring is not None
-    x = dense_to_sparse(x.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
-    y = dense_to_sparse(y, b, offset=offset_y, semiring=semiring)
+    # print(offset_x, offset_y, b, 2*(b-1)+1)
     
-    return sparse_to_dense(sparse_combine(y, x, fn=fn, semiring=semiring), semiring=semiring)
+    x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
+    y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)
+    c = sparse_combine(y, x, fn=fn, semiring=semiring)
+
+    # x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
+    # y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)
+    # c2 = sparse_combine(x, y, fn=fn, semiring=semiring)
+
+    # c2 = sparse_to_dense(c2, semiring=semiring).transpose(-2, -1)
+    c = sparse_to_dense(c, semiring=semiring)
+    
+    # print(c.exp() - c2.exp())
+    # assert torch.isclose(c.exp(), c2.exp()).all()
+    
+    # print("succes", offset_x, offset_y)
+    return c 
+
+
+def sparse_banded_grad(x_in, y_in, b,
+                       offset_x=0,
+                       offset_y=0,
+                       semiring=None,
+                       fn= lambda a, b: (a*b).sum(-1),
+                       fn2= lambda a, b: (a*b).sum(-1)):
+    "compute torch.matmul b1, b2"
+    x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
+    y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)
+    grad_y = sparse_combine(y, x, fn=fn, semiring=semiring)
+
+    x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
+    y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)    
+    grad_x = sparse_combine(x, y, fn=fn2, semiring=semiring)
+    
+    return sparse_to_dense(grad_x, offset=offset_x, semiring=None).transpose(-2, -1), \
+        sparse_to_dense(grad_y, offset=offset_y, semiring=None)
+
+def flip(x, b, semiring=None):
+    return pad(x.flip(-1), b-1, -2, semiring=semiring).unfold(-2, b, 1).diagonal(0, -2, -1)

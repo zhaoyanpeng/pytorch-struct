@@ -145,9 +145,6 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     slices = []
     a_grad = a.clone().fill_(0)    
     b_grad = b.clone().fill_(0)
-    # print("chcek", a_grad.shape)    
-    # a_grad2 = torch.tensor(0.0, device=a.device, dtype=a.dtype).set_(a.clone().storage(), a.storage_offset(), a.size(), a.stride()).fill_(0)
-    # b_grad2 = torch.tensor(0.0, device=b.device, dtype=b.dtype).set_(b.clone().storage(), b.storage_offset(), b.size(), b.stride()).fill_(0)
 
     total = 1
     for s in grad_output.shape:
@@ -332,42 +329,62 @@ def LogMemSemiring(max_size=100000):
         def backward(ctx, grad_output):
             a, b, opt = ctx.saved_tensors
             band, o1, o2 = opt.tolist()
-            print("backing out banded", a.shape, band)
-            reporter = MemReporter()
-            reporter.report()
-
-            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-            def fn(a, b, g):
-                def inner(a, b):
-                    # print("inner", a.shape, b.shape)
-                    return torch.softmax(a+b, -1).transpose(-1, -3).transpose(-1, -2)
-                p = sparse_banded_combine(a, b, band, o1, o2,
-                                          semiring=LogSemiring,
-                                          fn=inner)
-                p = p.transpose(-1, -3).transpose(-2, -3)
-                return p.mul(g.unsqueeze(-1)).sum(-1)
+            next_band = (band - 1) * 2 + 1
             
-            if False:
+            # print("backing out banded", a.shape, band)
+            # reporter = MemReporter()
+            # reporter.report()
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
+            def fn(a, b, gr):
+                g = dense_to_sparse(gr, next_band, semiring=StdSemiring)
+                g2 = dense_to_sparse(gr.transpose(-2,-1), next_band,
+                                     semiring=StdSemiring)
+                def inner(a, b):
+                    return torch.softmax(a+b, -1).mul(g.unsqueeze(-1)).sum(-2)
+                def inner2(a, b):
+                    return torch.softmax(a+b, -1).mul(g2.unsqueeze(-1)).sum(-2)
+
+                grad1, grad2 = sparse_banded_grad(a, b, band, o1, o2,
+                                                  semiring=LogSemiring,
+                                                  fn=inner, fn2=inner2)
+                return grad1, grad2
+            if True:
                 asum, bsum = [], []
                 for i, (x, y) in enumerate(zip(a.shape, b.shape)):
                     if x == 1:
                         asum.append(i)
                     if y == 1:
                         bsum.append(i)
-                back = fn(a, b, grad_output)
-                grad_a = back.sum(dim=asum, keepdim=True)
-                grad_b = back.sum(dim=bsum, keepdim=True)
+                grad_a, grad_b = fn(a, b, grad_output)
+                grad_a = grad_a.sum(dim=asum, keepdim=True)
+                grad_b = grad_b.sum(dim=bsum, keepdim=True)
             else:
                 grad_a, grad_b = unaccumulate_(
                     a, b, grad_output, fn,
                     step=max_size // a.shape[-1] + 2 
                 )
         
-            print("backing out banded 2",
-                  grad_a.shape, grad_b.shape, a.shape, b)
-            reporter = MemReporter()
-            reporter.report()
-                
+            # print("backing out banded 2",
+            #       grad_a.shape, grad_b.shape, a.shape, b)
+
+            # reporter = MemReporter()
+            # reporter.report()
+            # -
+            # a.clone().requires_grad_(True)
+            # b.clone().requires_grad_(True)
+            # f = sparse_banded_combine(a, b, band, o1, o2,
+            #                           semiring=LogSemiring,
+            #                           fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+            
+            # a_grad, b_grad = torch.autograd.grad(f, (a,b), grad_output)
+            # print(band, o1, o2)
+            # print(b_grad)
+            # print(grad_b)
+            # assert torch.isclose(b_grad, grad_b).all()
+            # print(a_grad)
+            # print(grad_a)
+            # assert torch.isclose(a_grad, grad_a).all()
+
             return grad_a, grad_b, None, None, None
 
 
