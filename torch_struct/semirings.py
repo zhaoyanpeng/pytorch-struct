@@ -316,7 +316,6 @@ def LogMemSemiring(max_size=100000):
                                          semiring=LogSemiring,
                                          fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
 
-            # return torch.logsumexp(a + b, dim=-1)
             # st = []
             # batch = a.shape[1]
             # size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
