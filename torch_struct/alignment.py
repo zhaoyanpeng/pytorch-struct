@@ -209,12 +209,18 @@ class Alignment(_Struct):
                     a, b, c, d = 0, bin_MN - 1, 1, bin_MN
 
                 if not sparse: 
-                    print("dot", dense_to_sparse(left[0,0,0,:, :, :], tsize, semiring=semiring))
-                    print("dense dot", dense_to_sparse(right[0, 0, 0, 0, op, :, :].transpose(-2,-1), tsize, semiring=semiring))
-                    # print("dense dot", right[0, 0, 0, 0, op, :, :])
+                    sp_left = dense_to_sparse(left, tsize, semiring=semiring)
+                    sp_right = dense_to_sparse(right, tsize, semiring=semiring)
                     v = semiring.dot(left[..., a:b].unsqueeze(-2),
                                      right.transpose(-2, -1)[..., op, :,  c:d].unsqueeze(-3))
-                    print("final dot", dense_to_sparse(v[0,0,0,0, :], rsize, semiring=semiring))
+                    v = dense_to_sparse(v, rsize, semiring=semiring)
+                    v2 = semiring.banded_dot2(
+                        sp_left, 
+                        sp_right[..., op,  :, :],
+                        tsize, c, a)
+
+                    assert torch.isclose(v, v2).all()
+                    print("succ")
                 else:
                     print("dot", left[0,0,0,:, :, :])
                     print("sparse dot", flip(right[0, 0, 0, 0, op, :, :], inner, semiring=semiring))
