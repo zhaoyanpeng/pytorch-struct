@@ -237,13 +237,14 @@ class Alignment(_Struct):
 
                     v = semiring.banded_dot2(
                         flip(left[..., :], tsize, semiring=semiring),
-                        flip(right[..., op,  :, :], tsize, semiring=semiring),#.transpose(-2, -1),
-                        tsize, c, a)
-                    rsize = v.shape[-1]
-                    v = flip(v, rsize, semiring=semiring)
+                        flip(right[..., op,  :, :], tsize, semiring=semiring),
+                        tsize, a, c)
+
+                    v = flip(v, v.shape[-1], semiring=semiring)
                     # print("final dot", v[0,0,0,0, :])
                 if sparse:
                     # print(v.shape)
+                    rsize = v.shape[-1]
                     v = v.view(ssize, batch, size, 3, bin_MN, rsize) \
                         .permute(0, 1, 2, 5, 4, 3) \
                         .view(ssize, batch, size, rsize, bin_MN, 3)
@@ -281,7 +282,7 @@ class Alignment(_Struct):
         for n in range(2, log_MN + 1):
             if n == min(3, log_MN):
                 # charta[n-1] = convert(chart[n-1], size)
-                # # print("covert")
+                print("covert", n)
                 chart[n-1] = convert(chart[n-1], size)
                 sparse = False
             size = int(size / 2)
