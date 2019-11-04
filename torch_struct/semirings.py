@@ -23,7 +23,7 @@ class Semiring:
     def dot(cls, *ls):
         "Dot product along last dim."
         return cls.sum(cls.times(*ls))
-    
+
     @classmethod
     def banded_dot(cls, a, b, band, offset_a, offset_b):
         return sparse_banded_combine(a, b, band, offset_a, offset_b,
@@ -35,7 +35,7 @@ class Semiring:
                                       offset_a, offset_b,
                                       semiring=cls,fn=cls.dot)
 
-    
+
     @classmethod
     def times(cls, *ls):
         "Multiply a list of tensors together"
@@ -77,6 +77,7 @@ class Semiring:
 
 
 class _Base(Semiring):
+    Log = False
     @staticmethod
     def mul(a, b):
         return torch.mul(a, b)
@@ -95,6 +96,8 @@ class _Base(Semiring):
 
 
 class _BaseLog(Semiring):
+    Log = True
+
     @staticmethod
     def mul(a, b):
         return a + b
@@ -146,17 +149,17 @@ class LogSemiring(_BaseLog):
 
 def back(x):
     x.backward()
-    
+
 def unaccumulate_(a, b, grad_output, fn, step=10000):
     slices = []
-    a_grad = a.clone().fill_(0)    
+    a_grad = a.clone().fill_(0)
     b_grad = b.clone().fill_(0)
 
     total = 1
     for s in grad_output.shape:
         slices.append(slice(s))
         total *= s
-        
+
     a_one = []
     for i, v in enumerate(a.shape[:-1]):
         if v == 1:
@@ -165,9 +168,9 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
     for i, v in enumerate(b.shape[:-1]):
         if v == 1:
             b_one.append(i)
-            
+
     indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape), -1)
-    
+
     for p in range(0, total, step):
         ind = indices[:, p : p + step].unbind()
 
@@ -177,7 +180,7 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
         b_ind = list(ind)
         for v in b_one:
             b_ind[v] = b_ind[v].clone().fill_(0).long()
-            
+
         q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
         # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
         a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
@@ -185,7 +188,7 @@ def unaccumulate_(a, b, grad_output, fn, step=10000):
         # a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
         # b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
         # assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
-        
+
     return a_grad, b_grad
 
 
@@ -195,7 +198,7 @@ def accumulate_(a, b, ret, fn, step=10000):
     for s in ret.shape:
         slices.append(slice(s))
         total *= s
-    
+
     a_one = []
     for i, v in enumerate(a.shape[:-1]):
         if v == 1:
@@ -206,7 +209,7 @@ def accumulate_(a, b, ret, fn, step=10000):
             b_one.append(i)
     indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
     for p in range(0, total, step):
-        
+
         ind = indices[:, p : p + step].unbind()
         if ind[0].shape[0] == 0:
             continue
@@ -257,7 +260,7 @@ def accumulate_(a, b, ret, fn, step=10000):
         #             .mul(grad_output.unsqueeze(-1))
         # grad_a = back.sum(dim=asum, keepdim=True)
         # grad_b = back.sum(dim=bsum, keepdim=True)
-        
+
 
 def LogMemSemiring(max_size=100000):
     # store = []
@@ -266,7 +269,7 @@ def LogMemSemiring(max_size=100000):
         def forward(ctx, a, b):
             ctx.save_for_backward(a, b)
 
-            
+
             # store.append(a)
             # store.append(b)
             st = []
@@ -291,7 +294,7 @@ def LogMemSemiring(max_size=100000):
             if True:
                 grad_a, grad_b = unaccumulate_(
                     a, b, grad_output, fn,
-                    step=max_size // a.shape[-1] + 2 
+                    step=max_size // a.shape[-1] + 2
                 )
             else:
                 asum, bsum = [], []
@@ -303,19 +306,19 @@ def LogMemSemiring(max_size=100000):
                 back = fn(a, b, grad_output)
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
-                
+
             print("backing out 2",
                   grad_a.shape, grad_b.shape, a.shape)
             reporter = MemReporter()
             reporter.report()
-                
+
             return grad_a, grad_b
 
     class _LogMemBandedDot(torch.autograd.Function):
         @staticmethod
         def forward(ctx, a, b, band, o1, o2):
             ctx.save_for_backward(a, b, torch.tensor([band, o1, o2]))
-            
+
             # store.append(a)
             # store.append(b)
             if True:
@@ -326,7 +329,7 @@ def LogMemSemiring(max_size=100000):
                 return sparse_banded_combine(a, b, band, o1, o2,
                                              semiring=LogSemiring,
                                              fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
-                
+
 
             # st = []
             # batch = a.shape[1]
@@ -341,7 +344,7 @@ def LogMemSemiring(max_size=100000):
             a, b, opt = ctx.saved_tensors
             band, o1, o2 = opt.tolist()
             next_band = (band - 1) * 2 + 1
-            
+
             # print("backing out banded", a.shape, band)
             # reporter = MemReporter()
             # reporter.report()
@@ -372,9 +375,9 @@ def LogMemSemiring(max_size=100000):
             else:
                 grad_a, grad_b = unaccumulate_(
                     a, b, grad_output, fn,
-                    step=max_size // a.shape[-1] + 2 
+                    step=max_size // a.shape[-1] + 2
                 )
-        
+
             # print("backing out banded 2",
             #       grad_a.shape, grad_b.shape, a.shape, b)
 
@@ -386,7 +389,7 @@ def LogMemSemiring(max_size=100000):
             # f = sparse_banded_combine(a, b, band, o1, o2,
             #                           semiring=LogSemiring,
             #                           fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
-            
+
             # a_grad, b_grad = torch.autograd.grad(f, (a,b), grad_output)
             # print(band, o1, o2)
             # print(b_grad)
@@ -420,8 +423,8 @@ def LogMemSemiring(max_size=100000):
         @classmethod
         def banded_dot(cls, a, b, band, offset_a, offset_b):
             return _LogMemBandedDot.apply(a, b, band, offset_a, offset_b)
-        
-            
+
+
         @classmethod
         def dot_grad(cls, a, b):
             "Dot product along last dim."
@@ -457,7 +460,7 @@ class MaxSemiring(_BaseLog):
 
 def TempMax(alpha):
     pass
-    
+
 def KMaxSemiring(k):
     """
     Implements the k-max semiring (kmax, +, [-inf, -inf..], [0, -inf, ...]).
