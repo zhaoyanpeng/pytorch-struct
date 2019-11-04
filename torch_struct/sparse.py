@@ -52,15 +52,24 @@ def dense_to_sparse(dense, band_size, semiring=None, offset=0):
     back = back.diagonal(0, off_dim-1, n_dim-1)
     return back.transpose(-2, -1)
 
-def sparse_combine(y, x, fn = lambda a, b: (a*b).sum(-1), semiring=None, back=False):
+def sparse_combine(y, x,
+                   fn = lambda a, b: (a*b).sum(-1), semiring=None, back=False):
     n_dim = -2
     off_dim = -1
+    # mag = abs(offset)
     n = x.shape[n_dim]
     x_width = x.shape[-1]
     y_width = y.shape[-1]
-    x = pad_to(x, n + x_width + y_width - 2, n_dim, semiring=semiring).unfold(n_dim, x_width + y_width - 1, 1)
+    x = pad_to(x, n + x_width + y_width - 2, n_dim, semiring=semiring) \
+        .unfold(n_dim, x_width + y_width - 1, 1)
+    # print(x.shape)
+    # if offset > 0:
+    #     x = x[..., offset:n + offset, :, :]
+    # if offset < 0:
+    #     x = x[..., 0:n, :, :]
     
-    y = pad_to(y,  y_width + x_width + x_width -2, off_dim, semiring=semiring).unfold(off_dim, x_width, 1)
+    y = pad_to(y, y_width + x_width + x_width -2, off_dim, semiring=semiring) \
+        .unfold(off_dim, x_width, 1)
 
     x = x.transpose(-1, -2)
     return fn(x, y)
@@ -76,23 +85,28 @@ def sparse_banded_combine(x_in, y_in, b,
                           semiring=None,
                           fn= lambda a, b: (a*b).sum(-1)):
     "compute torch.matmul b1, b2"
-    # print(offset_x, offset_y, b, 2*(b-1)+1)
     
     x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
     y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)
     c = sparse_combine(y, x, fn=fn, semiring=semiring)
-
-    # x = dense_to_sparse(x_in.transpose(-2, -1), b, offset=offset_x, semiring=semiring)
-    # y = dense_to_sparse(y_in, b, offset=offset_y, semiring=semiring)
-    # c2 = sparse_combine(x, y, fn=fn, semiring=semiring)
-
-    # c2 = sparse_to_dense(c2, semiring=semiring).transpose(-2, -1)
     c = sparse_to_dense(c, semiring=semiring)
-    
-    # print(c.exp() - c2.exp())
-    # assert torch.isclose(c.exp(), c2.exp()).all()
-    
-    # print("succes", offset_x, offset_y)
+    return c 
+
+
+def sparse_banded_combine2(x_in, y_in, b,
+                           offset_x=0,
+                           offset_y=0,
+                           semiring=None,
+                           fn= lambda a, b: (a*b).sum(-1)):
+    "compute torch.matmul b1, b2"
+    x = flip(x_in, b, semiring=semiring)
+    if offset_x != 0:
+        x = pad(x, 0, -1, offset=offset_x, semiring=semiring)
+    if offset_y != 0:
+        y = pad(y_in, 0, -1, offset=offset_y, semiring=semiring)
+    else:
+        y = y_in
+    c = sparse_combine(y, x, fn=fn, semiring=semiring)
     return c 
 
 

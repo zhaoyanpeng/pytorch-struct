@@ -29,6 +29,12 @@ class Semiring:
         return sparse_banded_combine(a, b, band, offset_a, offset_b,
                                      semiring=cls,fn=cls.dot)
 
+    @classmethod
+    def banded_dot2(cls, a, b, band, offset_a, offset_b):
+        return sparse_banded_combine2(a, b, band,
+                                      offset_a, offset_b,
+                                      semiring=cls,fn=cls.dot)
+
     
     @classmethod
     def times(cls, *ls):
@@ -312,9 +318,15 @@ def LogMemSemiring(max_size=100000):
             
             # store.append(a)
             # store.append(b)
-            return sparse_banded_combine(a, b, band, o1, o2,
-                                         semiring=LogSemiring,
-                                         fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+            if True:
+                return sparse_banded_combine2(a, b, band, o1, o2,
+                                              semiring=LogSemiring,
+                                              fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+            else:
+                return sparse_banded_combine(a, b, band, o1, o2,
+                                             semiring=LogSemiring,
+                                             fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+                
 
             # st = []
             # batch = a.shape[1]

@@ -86,6 +86,76 @@ def test_sparse():
     print((c.exp() - c2.exp()))
     assert torch.isclose(c.exp(), c2.exp()).all()
 
+def test_flip():
+    r1 = torch.rand(1, 10, 10)
+    r2 = torch.rand(5, 10, 10)
+    a = dense_to_sparse(r1.transpose(-2, -1), 5, offset= 0, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset= 0, semiring=LogSemiring)
+    c = sparse_combine(b, a, semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+
+
+    a = dense_to_sparse(r1, 5, offset= 0, semiring=LogSemiring)
+    a = flip(a, 5, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset= 0, semiring=LogSemiring)
+    c2 = sparse_combine(b, a, semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+    assert torch.isclose(c.exp(), c2.exp()).all()
+
+def test_flip_offset():
+    r1 = torch.rand(1, 10, 10)
+    r2 = torch.rand(5, 10, 10)
+    r1 = sparse_to_dense(dense_to_sparse(r1, 5, semiring=LogSemiring), semiring=LogSemiring)
+    r2 = sparse_to_dense(dense_to_sparse(r2, 5, semiring=LogSemiring), semiring=LogSemiring)
+    
+    a = dense_to_sparse(r1.transpose(-2, -1), 5, offset= 1, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset= 0, semiring=LogSemiring)
+    c = sparse_combine(b, a, semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+
+
+    a = dense_to_sparse(r1, 5, offset= 0, semiring=LogSemiring)
+    a = flip(a, 5, semiring=LogSemiring)
+    a = pad(a, 0, -1, offset=1, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset= 0, semiring=LogSemiring)
+    
+    c2 = sparse_combine(b, a,
+                        semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+    print(c.exp()- c2.exp())
+    assert torch.isclose(c.exp(), c2.exp()).all()
+
+    r1 = torch.rand(1, 10, 10)
+    r2 = torch.rand(5, 10, 10)
+    r1 = sparse_to_dense(dense_to_sparse(r1, 5, semiring=LogSemiring), semiring=LogSemiring)
+    r2 = sparse_to_dense(dense_to_sparse(r2, 5, semiring=LogSemiring), semiring=LogSemiring)
+
+
+    
+    a = dense_to_sparse(r1.transpose(-2, -1), 5, offset=0, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset= 1, semiring=LogSemiring)
+    c = sparse_combine(b, a, semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+
+    a = dense_to_sparse(r1, 5, offset= 0, semiring=LogSemiring)
+    a = flip(a, 5, semiring=LogSemiring)
+
+    b = dense_to_sparse(r2, 5, offset= 0, semiring=LogSemiring)
+    b = pad(b, 0, -1, offset=1, semiring=LogSemiring)
+    
+    c2 = sparse_combine(b, a,
+                        semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+    assert torch.isclose(c.exp(), c2.exp()).all()
+
+
+    # Check
+    a = dense_to_sparse(r1.transpose(-2, -1), 5, offset=0, semiring=LogSemiring)
+    b = dense_to_sparse(r2, 5, offset=0, semiring=LogSemiring)
+    c = sparse_combine(b, a, semiring=LogSemiring,fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+
+    c3 = dense_to_sparse(LogSemiring.dot(r1.unsqueeze(-2), r2.transpose(-2, -1).unsqueeze(-3)),
+                         9, semiring=LogSemiring)
+    print(c.shape, c3.shape)
+    print(c.exp(), c3.exp())
+    assert torch.isclose(c.exp(), c3.exp()).all()
+
+    
+    
     # FINISH
     
     # flippeda = pad(b.flip(1), 4, 0).unfold(0, 5, 1).diagonal(0, 1, 2)

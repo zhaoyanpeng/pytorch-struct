@@ -51,6 +51,7 @@ def test_align_custom():
     struct = Alignment(LogMemSemiring(10))
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
+    # s2.backward()
     assert torch.isclose(s, s2).all()
     print(marginals)
     print(marginals2)

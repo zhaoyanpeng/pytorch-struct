@@ -179,47 +179,58 @@ class Alignment(_Struct):
 
         #     chart[1][:, b, :point, x, y, :] = q
         
-        size = bin_MN // 2
-        c = charta[1][..., 0, 0, :].view(ssize, batch, size, 3, bin_MN, 3) \
-                    .permute(0, 1, 2, 5, 4, 3)  \
-                    .view(ssize, batch, size, 3, bin_MN, 3)
-        c2 = sparse_to_dense(c, semiring=semiring)
-        chart[1] = c2.view(ssize, batch, size, 3, bin_MN, bin_MN) \
-                   .permute(0, 1, 2, 4, 5, 3)
+
         # print(chart[1])
         # print(charta[1])
         # Scan
-        def merge(x, size, rsize):
+
+        def merge(x, size, rsize, sparse=False):
+            tsize = (rsize-1)//2 +1
+            inner = bin_MN
+            if sparse:
+                inner = (rsize-1)//2 +1
+
             left = (
                 x[:, :, 0 : size * 2 : 2]
                 .permute(0, 1, 2, 5, 4, 3)
-                .view(ssize, batch, size, 3, bin_MN,  bin_MN)
+                .view(ssize, batch, size, 3, bin_MN,  inner)
             )
             right = (
                 x[:, :, 1 : size * 2 : 2]
-                .permute(0, 1, 2,  5, 3, 4)
-                .view(ssize, batch, size, 1, 3,  bin_MN, bin_MN)
+                .permute(0, 1, 2, 5, 4, 3)
+                .view(ssize, batch, size, 1, 3, bin_MN, inner)
             )
             st = []
-            for op in (Up, Down, Mid):
+            for op in (Mid, Up, Down):
                 a, b, c, d = 0, bin_MN, 0, bin_MN
                 if op == Up:
                     a, b, c, d = 1, bin_MN, 0, bin_MN - 1
                 if op == Down:
                     a, b, c, d = 0, bin_MN - 1, 1, bin_MN
 
-                if rsize > 100: 
+                if not sparse: 
+                    print("dot", dense_to_sparse(left[0,0,0,:, :, :], tsize, semiring=semiring))
+                    print("dense dot", dense_to_sparse(right[0, 0, 0, 0, op, :, :].transpose(-2,-1), tsize, semiring=semiring))
+                    # print("dense dot", right[0, 0, 0, 0, op, :, :])
                     v = semiring.dot(left[..., a:b].unsqueeze(-2),
-                                     right[..., op, :,  c:d].unsqueeze(-3))
-
+                                     right.transpose(-2, -1)[..., op, :,  c:d].unsqueeze(-3))
+                    print("final dot", dense_to_sparse(v[0,0,0,0, :], rsize, semiring=semiring))
                 else:
-                    v = semiring.banded_dot(
-                        left[..., :],
-                        right[..., op,  :, :].transpose(-2, -1),
-                        rsize, c, a)
-
-                v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
-                    .permute(0, 1, 2, 5, 4, 3) 
+                    print("dot", left[0,0,0,:, :, :])
+                    print("sparse dot", flip(right[0, 0, 0, 0, op, :, :], inner, semiring=semiring))
+                    v = semiring.banded_dot2(
+                        left[..., :], 
+                        right[..., op,  :, :],#.transpose(-2, -1),
+                        inner, c, a)
+                    print("final dot", v[0,0,0,0, :])
+                if sparse:
+                    print(v.shape)
+                    v = v.view(ssize, batch, size, 3, bin_MN, rsize) \
+                        .permute(0, 1, 2, 5, 4, 3) \
+                        .view(ssize, batch, size, rsize, bin_MN, 3)
+                else:
+                    v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
+                        .permute(0, 1, 2, 5, 4, 3)
                 
                 st.append(v)
             st = torch.stack(st, dim=-1)
@@ -227,13 +238,54 @@ class Alignment(_Struct):
         
         rsize = 2
         size = bin_MN // 2
+        chart[1] = charta[1][..., 0, 0, :]
+        # c = chart[1].view(ssize, batch, size, rsize+1, bin_MN, 3) \
+        #          .permute(0, 1, 2, 5, 4, 3)  \
+        #          .view(ssize, batch, size, 3, bin_MN, rsize+1)
+
+        # c = flip(c, 3, semiring=semiring)
+
+        # chart[1] = c.view(ssize, batch, size, 3, bin_MN, rsize+1) \
+        #          .permute(0, 1, 2, 5, 4, 3) 
+        
+        sparse = True
+
+        def convert(chart, size, rsize):
+            c = chart.view(ssize, batch, size, rsize+1, bin_MN, 3) \
+                          .permute(0, 1, 2, 5, 4, 3)  \
+                          .view(ssize, batch, size, 3, bin_MN, rsize+1)
+            c2 = sparse_to_dense(c, semiring=semiring)
+            return c2.view(ssize, batch, size, 3, bin_MN, bin_MN) \
+                     .permute(0, 1, 2, 4, 5, 3) \
+                     .view(ssize, batch, size, bin_MN, bin_MN, 3)
+        
         for n in range(2, log_MN + 1):
+            if n == min(2, log_MN):
+                charta[n-1] = convert(chart[n-1], size, rsize)
+                # print("covert")
+                # chart[n-1] = convert(chart[n-1], size, rsize)
+                sparse = False
             size = int(size / 2)
             rsize = rsize * 2
-            chart[n] = merge(chart[n - 1], size, rsize+1)
+            
+            # chart[n] = merge(chart[n - 1], size, rsize+1, sparse=sparse)
+            
+            charta[n] = merge(charta[n - 1], size, rsize+1, sparse=False)
+            chart[n] = merge(chart[n - 1], size, rsize+1, sparse=True)
+
+            back = convert(chart[n], size, rsize)
+            assert charta[n].shape == back.shape
+            
+            print("a", charta[n][0,0,0,:, :, 1])
+            print("c", chart[n][0,0,0,:, :, 1])
+            print("b", back[0,0,0,:, :, 1])
+            assert torch.isclose(charta[n], back).all()
+            print("Success")
+            
         # reporter = MemReporter()
         # reporter.report()
-
+        print("answer",chart[-1][:, :, 0, :, :, Mid])
+        print("return", M, N, chart[-1][:, :, 0, M, N, Mid])
         v = chart[-1][:, :, 0, M, N, Mid]
         return v, [log_potentials], None
 
