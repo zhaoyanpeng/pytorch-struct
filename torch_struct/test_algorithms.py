@@ -8,7 +8,7 @@ from .semirings import (
     LogSemiring,
     KMaxSemiring,
     LogMemSemiring,
-    
+
     Semiring,
     SparseMaxSemiring,
     MaxSemiring,
@@ -42,13 +42,13 @@ def test_simple_a(batch, N, C):
 def test_align_custom():
     model = Alignment
     #vals, _ = model._rand()
-    vals = torch.rand(1, 2, 2, 3)
+    vals = torch.rand(1, 8, 8, 3)
 
-    struct = Alignment(LogSemiring)
+    struct = Alignment(LogSemiring, 4)
     marginals = struct.marginals(vals)
     s = struct.sum(vals)
 
-    struct = Alignment(LogMemSemiring(10))
+    struct = Alignment(LogMemSemiring(10), 3)
     marginals2 = struct.marginals(vals)
     s2 = struct.sum(vals)
     # s2.backward()

@@ -3,8 +3,14 @@ from .helpers import _Struct
 import math
 from .sparse import *
 from pytorch_memlab import MemReporter
+from .semirings import LogSemiring
 
 class Alignment(_Struct):
+    def __init__(self, semiring=LogSemiring, sparse_rounds=3):
+        self.semiring = semiring
+        self.sparse_rounds = sparse_rounds
+
+
     def _check_potentials(self, edge, lengths=None):
         batch, N_1, M_1, x = edge.shape
         assert x == 3
@@ -210,47 +216,24 @@ class Alignment(_Struct):
                     a, b, c, d = 0, bin_MN - 1, 1, bin_MN
 
                 if not sparse:
-                    # print(op, a, b)
-                    # sp_left = dense_to_sparse(left, tsize, semiring=semiring)
-                    # sp_right = dense_to_sparse(right, tsize, semiring=semiring)
-                    # print("d r", sp_right[0,0,0,0])
-                    # print("d l", sp_left[0,0,0,0])
-
                     v = semiring.dot(left[..., a:b].unsqueeze(-2),
                                      right.transpose(-2, -1)[..., op, :,  c:d].unsqueeze(-3))
-                    # v4 = dense_to_sparse(v, rsize, semiring=semiring)
-                    # v2 = semiring.banded_dot2(
-                    #     sp_left,
-                    #     sp_right[..., op,  :, :],
-                    #     tsize, c, a)
-                    # print("sizes", v2.shape, tsize, rsize)
-                    # v3 = sparse_to_dense(v2, semiring=semiring)
-                    # print(v2[0,0,0,0].exp(), v4[0,0,0,0].exp())
+                    v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
+                        .permute(0, 1, 2, 5, 4, 3)
 
-                    # assert torch.isclose(v2, v4).all(), \
-                    #     "%s %s %s %s %s\n%s\n%s"%(a, c, tsize, v2[0,0,0,0], v4[0,0,0,0], left[0,0,0,0], right[0,0,0,0])
-                    # assert torch.isclose(v, v3).all()
-                    # print("succ")
                 else:
-                    # print("s r", flip(right[0,0,0,0], inner, semiring=semiring))
-                    # print("s l", flip(left[0,0,0,0], inner, semiring=semiring))
-
                     v = semiring.banded_dot2(
                         flip(left[..., :], tsize, semiring=semiring),
                         flip(right[..., op,  :, :], tsize, semiring=semiring),
                         tsize, a, c)
 
                     v = flip(v, v.shape[-1], semiring=semiring)
-                    # print("final dot", v[0,0,0,0, :])
-                if sparse:
-                    # print(v.shape)
+
                     rsize = v.shape[-1]
                     v = v.view(ssize, batch, size, 3, bin_MN, rsize) \
                         .permute(0, 1, 2, 5, 4, 3) \
                         .view(ssize, batch, size, rsize, bin_MN, 3)
-                else:
-                    v = v.view(ssize, batch, size, 3, bin_MN, bin_MN) \
-                        .permute(0, 1, 2, 5, 4, 3)
+
 
                 st.append(v)
             st = torch.stack(st, dim=-1)
@@ -280,9 +263,8 @@ class Alignment(_Struct):
                      .view(ssize, batch, size, bin_MN, bin_MN, 3)
 
         for n in range(2, log_MN + 1):
-            if n == min(3, log_MN):
+            if n == min(self.sparse_rounds, log_MN):
                 # charta[n-1] = convert(chart[n-1], size)
-                print("covert", n)
                 chart[n-1] = convert(chart[n-1], size)
                 sparse = False
             size = int(size / 2)
@@ -303,8 +285,8 @@ class Alignment(_Struct):
 
         # reporter = MemReporter()
         # reporter.report()
-        print("answer",chart[-1][:, :, 0, :, :, Mid])
-        print("return", M, N, chart[-1][:, :, 0, M, N, Mid])
+        # print("answer",chart[-1][:, :, 0, :, :, Mid])
+        # print("return", M, N, chart[-1][:, :, 0, M, N, Mid])
         v = chart[-1][:, :, 0, M, N, Mid]
         return v, [log_potentials], None
 

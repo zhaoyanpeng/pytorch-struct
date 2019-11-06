@@ -150,76 +150,19 @@ class LogSemiring(_BaseLog):
 def back(x):
     x.backward()
 
-def unaccumulate_(a, b, grad_output, fn, step=10000):
-    slices = []
-    a_grad = a.clone().fill_(0)
-    b_grad = b.clone().fill_(0)
-
-    total = 1
-    for s in grad_output.shape:
-        slices.append(slice(s))
-        total *= s
-
-    a_one = []
-    for i, v in enumerate(a.shape[:-1]):
+def ones(x):
+    one = []
+    for i, v in enumerate(x.shape[:-1]):
         if v == 1:
-            a_one.append(i)
-    b_one = []
-    for i, v in enumerate(b.shape[:-1]):
-        if v == 1:
-            b_one.append(i)
+            one.append(i)
+    return one
 
-    indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape), -1)
+def mind(one, inds):
+    inds = list(inds)
+    for v in one:
+        inds[v] = inds[v].clone().fill_(0)
+    return inds
 
-    for p in range(0, total, step):
-        ind = indices[:, p : p + step].unbind()
-
-        a_ind = list(ind)
-        for v in a_one:
-            a_ind[v] = a_ind[v].clone().fill_(0).long()
-        b_ind = list(ind)
-        for v in b_one:
-            b_ind[v] = b_ind[v].clone().fill_(0).long()
-
-        q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
-        # a_grad[tuple(a_ind)] = a_grad[tuple(a_ind)] + q
-        a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
-        b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
-        # a_grad2.index_put_(tuple(a_ind),  q, accumulate=True)
-        # b_grad2.index_put_(tuple(b_ind),  q, accumulate=True)
-        # assert torch.isclose(a_grad, a_grad2).all(), a_grad - a_grad2
-
-    return a_grad, b_grad
-
-
-def accumulate_(a, b, ret, fn, step=10000):
-    slices = []
-    total = 1
-    for s in ret.shape:
-        slices.append(slice(s))
-        total *= s
-
-    a_one = []
-    for i, v in enumerate(a.shape[:-1]):
-        if v == 1:
-            a_one.append(i)
-    b_one = []
-    for i, v in enumerate(b.shape[:-1]):
-        if v == 1:
-            b_one.append(i)
-    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape), -1)
-    for p in range(0, total, step):
-
-        ind = indices[:, p : p + step].unbind()
-        if ind[0].shape[0] == 0:
-            continue
-        a_ind = list(ind)
-        for v in a_one:
-            a_ind[v] = a_ind[v].clone().fill_(0)
-        b_ind = list(ind)
-        for v in b_one:
-            b_ind[v] = b_ind[v].clone().fill_(0)
-        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
 
 
 # def unaccumulate_(a, b, ret, grad_output, fn, step=1000):
@@ -262,6 +205,75 @@ def accumulate_(a, b, ret, fn, step=10000):
         # grad_b = back.sum(dim=bsum, keepdim=True)
 
 
+def accumulate_(a, b, ret, fn, preserve, step=10000):
+    slices = []
+    total = 1
+    for s in ret.shape[:preserve]:
+        slices.append(slice(s))
+        total *= s
+
+    a_one, b_one = ones(a), ones(b)
+    indices = torch.tensor(np.mgrid[slices]).view(len(ret.shape[:preserve]), -1)
+
+    for p in range(0, total, step):
+        ind = indices[:, p : p + step].unbind()
+        a_ind = mind(a_one, ind)
+        b_ind = mind(b_one, ind)
+        ret[ind] = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+
+
+def unaccumulate_(a, b, grad_output, fn, step=10000):
+    slices = []
+    a_grad = a.clone().fill_(0)
+    b_grad = b.clone().fill_(0)
+
+    total = 1
+    for s in grad_output.shape:
+        slices.append(slice(s))
+        total *= s
+    a_one, b_one = ones(a), ones(b)
+
+    indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape), -1)
+
+    for p in range(0, total, step):
+        ind = indices[:, p : p + step].unbind()
+        a_ind = mind(a_one, ind)
+        b_ind = mind(b_one, ind)
+
+        q = fn(a[tuple(a_ind)], b[tuple(b_ind)], grad_output[tuple(ind)])
+        a_grad.index_put_(tuple(a_ind),  q, accumulate=True)
+        b_grad.index_put_(tuple(b_ind),  q, accumulate=True)
+    return a_grad, b_grad
+
+def unaccumulate2_(a, b, grad_output, preserve, fn, step=10000):
+    slices = []
+    a_grad = a.clone().fill_(0)
+    b_grad = b.clone().fill_(0)
+
+    total = 1
+    for s in grad_output.shape[:preserve]:
+        slices.append(slice(s))
+        total *= s
+    a_one, b_one = ones(a), ones(b)
+
+    indices = torch.tensor(np.mgrid[slices]).view(len(grad_output.shape[:preserve]), -1)
+
+    for p in range(0, total, step):
+        ind = indices[:, p : p + step].unbind()
+        a_ind = mind(a_one, ind)
+        b_ind = mind(b_one, ind)
+
+        with torch.enable_grad():
+            a_in = a.clone().requires_grad_(True)
+            b_in = b.clone().requires_grad_(True)
+            q = fn(a[tuple(a_ind)], b[tuple(b_ind)])
+        ag, bg = torch.autograd.grad(q, (a, b), grad_output[tuple(ind)])
+        a_grad += ag
+        b_grad += bg
+
+    return a_grad, b_grad
+
+
 def LogMemSemiring(max_size=100000):
     # store = []
     class _LogMemDot(torch.autograd.Function):
@@ -269,24 +281,24 @@ def LogMemSemiring(max_size=100000):
         def forward(ctx, a, b):
             ctx.save_for_backward(a, b)
 
-
+            # return torch.logsumexp(a + b, dim=-1)
             # store.append(a)
             # store.append(b)
-            st = []
-            batch = a.shape[1]
-            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
-            # return torch.logsumexp(a + b, dim=-1)
 
+            size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
             ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
-            accumulate_(a, b, ret, lambda a, b: torch.logsumexp(a + b, dim=-1), step=max_size // a.shape[-1] + 2)
+            accumulate_(a, b, ret,
+                        lambda a, b: torch.logsumexp(a + b, dim=-1),
+                        preserve=len(ret.shape),
+                        step=max_size // a.shape[-1] + 2)
             return ret
 
         @staticmethod
         def backward(ctx, grad_output):
             a, b = ctx.saved_tensors
-            print("backing out", a.shape)
-            reporter = MemReporter()
-            reporter.report()
+            # print("backing out", a.shape)
+            # reporter = MemReporter()
+            # reporter.report()
 
             size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-1]
 
@@ -307,12 +319,66 @@ def LogMemSemiring(max_size=100000):
                 grad_a = back.sum(dim=asum, keepdim=True)
                 grad_b = back.sum(dim=bsum, keepdim=True)
 
-            print("backing out 2",
-                  grad_a.shape, grad_b.shape, a.shape)
-            reporter = MemReporter()
-            reporter.report()
+            # print("backing out 2",
+            #       grad_a.shape, grad_b.shape, a.shape)
+            # reporter = MemReporter()
+            # reporter.report()
 
             return grad_a, grad_b
+
+
+
+
+    class _LogMemBandedDot2(torch.autograd.Function):
+        @staticmethod
+        def compute(a, b, band, o1, o2):
+            if False:
+                return run(a, b)
+            else:
+                x = a.shape[-2]
+                size = a.shape[-1]
+                y = (size - 1) * 2 + 3
+                size = [max(p, q) for p, q in zip(a.shape, b.shape)][:-2]
+                size.append(x)
+                size.append(y)
+                ret = torch.zeros(*size, dtype=a.dtype, device=a.device)
+                accumulate_(a, b, ret, preserve=-2,
+                            fn=run, step=max_size // (a.shape[-2] * a.shape[-1]) + 2)
+                return ret
+
+        @staticmethod
+        def run(band, o1, o2):
+            def _run(a, b):
+                return sparse_banded_combine2(a, b, band, o1, o2,
+                                              semiring=LogSemiring,
+                                              fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+            return _run
+
+        @staticmethod
+        def forward(ctx, a, b, band, o1, o2):
+            ctx.save_for_backward(a, b, torch.tensor([band, o1, o2]))
+            return _LogMemBandedDot2.compute(a, b, band, o1, o2)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            a, b, opt = ctx.saved_tensors
+            band, o1, o2 = opt.tolist()
+
+
+            def run(a, b):
+                return sparse_banded_combine2(
+                    a, b, band, o1, o2,
+                    semiring=LogSemiring,
+                    fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
+            grad_a, grad_b = unaccumulate2_(a, b, grad_output,
+                                            preserve=-2, fn=run,
+                                            step=max_size // (a.shape[-2] * a.shape[-1]) + 2)
+            return grad_a, grad_b, None, None, None
+            # with torch.enable_grad():
+            #     val = _LogMemBandedDot2.compute(a, b, band, o1, o2)
+            # grad_a, grad_b = torch.autograd.grad(val, (a,b), grad_output)
+            # return grad_a, grad_b, None, None, None
+
 
     class _LogMemBandedDot(torch.autograd.Function):
         @staticmethod
@@ -378,27 +444,6 @@ def LogMemSemiring(max_size=100000):
                     step=max_size // a.shape[-1] + 2
                 )
 
-            # print("backing out banded 2",
-            #       grad_a.shape, grad_b.shape, a.shape, b)
-
-            # reporter = MemReporter()
-            # reporter.report()
-            # -
-            # a.clone().requires_grad_(True)
-            # b.clone().requires_grad_(True)
-            # f = sparse_banded_combine(a, b, band, o1, o2,
-            #                           semiring=LogSemiring,
-            #                           fn=lambda a, b: torch.logsumexp(a + b, dim=-1))
-
-            # a_grad, b_grad = torch.autograd.grad(f, (a,b), grad_output)
-            # print(band, o1, o2)
-            # print(b_grad)
-            # print(grad_b)
-            # assert torch.isclose(b_grad, grad_b).all()
-            # print(a_grad)
-            # print(grad_a)
-            # assert torch.isclose(a_grad, grad_a).all()
-
             return grad_a, grad_b, None, None, None
 
 
@@ -423,6 +468,10 @@ def LogMemSemiring(max_size=100000):
         @classmethod
         def banded_dot(cls, a, b, band, offset_a, offset_b):
             return _LogMemBandedDot.apply(a, b, band, offset_a, offset_b)
+
+        @classmethod
+        def banded_dot2(cls, a, b, band, offset_a, offset_b):
+            return _LogMemBandedDot2.apply(a, b, band, offset_a, offset_b)
 
 
         @classmethod

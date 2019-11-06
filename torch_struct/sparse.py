@@ -159,11 +159,11 @@ def sparse_banded_grad(x_in, y_in, b,
 
 def flip(x, b, semiring=None):
     mid = (x.shape[-1] + 1) // 2 - 1
-    if semiring is None or not semiring.Log:
-        assert (x[..., 0, :mid] == 0).all()
-        assert (x[..., 0, mid+1:] == 0).all()
-    elif semiring is not None and semiring.Log:
-        assert (x[..., 0, :mid] <= -1e5).all()
-        assert (x[..., -1, mid+1:] <= -1e5).all()
+    # if semiring is None or not semiring.Log:
+    #     assert (x[..., 0, :mid] == 0).all()
+    #     assert (x[..., 0, mid+1:] == 0).all()
+    # elif semiring is not None and semiring.Log:
+    #     assert (x[..., 0, :mid] <= -1e5).all()
+    #     assert (x[..., -1, mid+1:] <= -1e5).all()
 
     return pad(x.flip(-1), b-1, -2, semiring=semiring).unfold(-2, b, 1).diagonal(0, -2, -1)
