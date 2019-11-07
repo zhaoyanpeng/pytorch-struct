@@ -8,15 +8,14 @@ from .semirings import (
     LogSemiring,
     KMaxSemiring,
     LogMemSemiring,
-
     Semiring,
-    SparseMaxSemiring,
     MaxSemiring,
     StdSemiring,
     SampledSemiring,
     EntropySemiring,
     MultiSampledSemiring,
 )
+from .sparse_max import SparseMaxSemiring
 import torch
 from hypothesis import given, settings
 from hypothesis.strategies import integers, data, sampled_from

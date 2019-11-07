@@ -17,12 +17,15 @@ from .linearchain import LinearChain
 from .semimarkov import SemiMarkov
 from .alignment import Alignment
 from .rl import SelfCritical
+from .sparse_max import (
+    SparseMaxSemiring,
+)
+
 from .semirings import (
     LogSemiring,
     LogMemSemiring,
     StdSemiring,
     KMaxSemiring,
-    SparseMaxSemiring,
     SampledSemiring,
     MaxSemiring,
     EntropySemiring,
