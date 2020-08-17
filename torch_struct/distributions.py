@@ -75,6 +75,24 @@ class StructDistribution(Distribution):
             entropy (*batch_shape*)
         """
         return self._struct(EntropySemiring).sum(self.log_potentials, self.lengths)
+    @lazy_property
+    def max(self):
+        return self._struct(MaxSemiring).kbest(self.log_potentials, self.lengths)
+
+    @lazy_property
+    def inside(self):
+        """ marginal of the sentence """
+        return self._struct(LogSemiring).inside(self.log_potentials, self.lengths)
+
+    @lazy_property
+    def inside_bp(self):
+        """ marginal of the sentence, and inside scores of spans"""
+        return self._struct(LogSemiring).inside_bp(self.log_potentials, self.lengths)
+
+    @lazy_property
+    def inside_im(self):
+        """ marginal of the sentence, and marginals of spans"""
+        return self._struct(LogSemiring).inside_im(self.log_potentials, self.lengths)
 
     @lazy_property
     def argmax(self):

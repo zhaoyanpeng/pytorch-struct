@@ -48,6 +48,7 @@ class CKY(_Struct):
         X_Y_Z1 = arr(NTs, Ts)
         X_Y1_Z1 = arr(Ts, Ts)
 
+        span[0] = term_use
         for w in range(1, N):
             all_span = []
             v2 = v + (N - w, -1)
@@ -78,7 +79,131 @@ class CKY(_Struct):
         final = beta[A][0, :, NTs]
         top = torch.stack([final[:, i, l - 1] for i, l in enumerate(lengths)], dim=1)
         log_Z = semiring.dot(top, roots)
-        return log_Z, (term_use, rules, roots, span[1:]), beta
+        return log_Z, (term_use, rules, roots, span), beta
+    
+    def inside(self, scores, lengths=None, _autograd=True, _raw=False):
+        terms, rules, _ = scores
+        batch, N, T = terms.shape
+        _, NT, _, _ = rules.shape
+
+        v, (_, _, _, spans), _ = self._dp(scores, lengths)
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, N, N, K, dtype=scores[1].dtype, device=scores[1].device
+        )
+        spans = spans[1:]
+        for w in range(len(spans)):
+            spans_marg[:, w, : N - w - 1] = self.semiring.unconvert(spans[w])
+
+        return self.semiring.unconvert(v), spans_marg
+
+    def inside_bp(self, scores, lengths=None, _autograd=True, _raw=False):
+        terms, rules, _ = scores
+        batch, N, T = terms.shape
+        _, NT, _, _ = rules.shape
+
+        v, (_, _, _, spans), _ = self._dp(
+            scores, lengths=lengths, force_grad=True, cache=False
+        )
+        
+        inputs = tuple(spans)
+        obj = self.semiring.unconvert(v).sum(dim=0)
+        marg = torch.autograd.grad(
+            obj, inputs, create_graph=True, only_inputs=True, allow_unused=False
+        )
+
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, int(N * (N - 1) / 2), K, dtype=scores[1].dtype, device=scores[1].device
+        ) 
+        beg_idx = 0 
+        spans = spans[1:]
+        for w in range(len(spans)):
+            end_idx = beg_idx + N - w - 1 
+            mask = (marg[w + 1] != 0).float()
+            x = spans[w] * mask 
+            spans_marg[:, beg_idx : end_idx] = self.semiring.unconvert(x)
+            beg_idx = end_idx
+        spans_marg = torch.masked_fill(spans_marg, spans_marg == 0, -1e5)
+        return self.semiring.unconvert(v), spans_marg
+
+    def inside_im(self, scores, lengths=None, _autograd=True, _raw=False):
+        terms, rules, _ = scores
+        batch, N, T = terms.shape
+        _, NT, _, _ = rules.shape
+
+        v, (_, _, _, spans), _ = self._dp(
+            scores, lengths=lengths, force_grad=True, cache=False
+        )
+        
+        inputs = tuple(spans)
+        obj = self.semiring.unconvert(v).sum(dim=0)
+        marg = torch.autograd.grad(
+            obj, inputs, create_graph=True, only_inputs=True, allow_unused=False
+        )
+
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, int(N * (N - 1) / 2), K, dtype=scores[1].dtype, device=scores[1].device
+        ) 
+        beg_idx = 0 
+        spans = spans[1:]
+        for w in range(len(spans)):
+            end_idx = beg_idx + N - w - 1 
+            x = marg[w + 1]
+            spans_marg[:, beg_idx : end_idx] = self.semiring.unconvert(x)
+            beg_idx = end_idx
+        return self.semiring.unconvert(v), spans_marg
+
+    def sum_discarded(self, scores, lengths=None, _autograd=True, _raw=False):
+        """ this one is buggy 'cause gradients are cached during bp """
+        terms, rules, _ = scores
+        batch, N, T = terms.shape
+        _, NT, _, _ = rules.shape
+
+        v, (_, _, _, spans), _ = self._dp(scores, lengths)
+        
+        inputs = tuple(spans)
+        obj = self.semiring.unconvert(v).sum(dim=0)
+        marg = torch.autograd.grad(
+            obj, inputs, create_graph=True, only_inputs=True, allow_unused=False,
+        )
+
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, int(N * (N - 1) / 2), K, dtype=scores[1].dtype, device=scores[1].device
+        ) 
+        beg_idx = 0 
+        spans = spans[1:]
+        for w in range(len(spans)):
+            end_idx = beg_idx + N - w - 1 
+            mask = (marg[w + 1] != 0).float()
+            x = spans[w] * mask 
+            spans_marg[:, beg_idx : end_idx] = self.semiring.unconvert(x)
+            beg_idx = end_idx
+        spans_marg = torch.masked_fill(spans_marg, spans_marg == 0, -1e5)
+        """
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, N, N, K, dtype=scores[1].dtype, device=scores[1].device
+        )
+        spans = spans[1:]
+        for w in range(len(spans)):
+            mask = (marg[w + 1] != 0).float()
+            x = spans[w] * mask 
+            spans_marg[:, w, : N - w - 1] = self.semiring.unconvert(x)
+        spans_marg = torch.masked_fill(spans_marg, spans_marg == 0, -1e5)
+        """
+        """
+        K = NT #if NT > T else T
+        spans_marg = torch.zeros(
+            batch, N, N, K, dtype=scores[1].dtype, device=scores[1].device
+        )
+        spans = spans[1:]
+        for w in range(len(spans)):
+            spans_marg[:, w, : N - w - 1] = self.semiring.unconvert(spans[w])
+        """
+        return self.semiring.unconvert(v), spans_marg
 
     def marginals(self, scores, lengths=None, _autograd=True, _raw=False):
         """
@@ -99,22 +224,87 @@ class CKY(_Struct):
         _, NT, _, _ = rules.shape
 
         v, (term_use, rule_use, root_use, spans), alpha = self._dp(
-            scores, lengths=lengths, force_grad=True, cache=not _raw
+            scores, lengths=lengths, force_grad=True, cache=False
         )
-
+        lprob = True 
         def marginal(obj, inputs):
             obj = self.semiring.unconvert(obj).sum(dim=0)
             marg = torch.autograd.grad(
                 obj, inputs, create_graph=True, only_inputs=True, allow_unused=False,
             )
-
+            K = NT if NT > T else T
             spans_marg = torch.zeros(
-                batch, N, N, NT, dtype=scores[1].dtype, device=scores[1].device
+                batch, N, N, K, dtype=scores[1].dtype, device=scores[1].device
             )
             span_ls = marg[3:]
             for w in range(len(span_ls)):
-                x = span_ls[w].sum(dim=0, keepdim=True)
-                spans_marg[:, w, : N - w - 1] = self.semiring.unconvert(x)
+                span_lprob = span_ls[w]
+                if lprob:
+                    span_lprob = span_lprob * spans[w]     
+                x = span_lprob.sum(dim=0, keepdim=True)
+                spans_marg[:, w, : N - w, :x.size(-1)] = self.semiring.unconvert(x)
+
+            rule_marg = self.semiring.unconvert(marg[0]).squeeze(1)
+            root_marg = self.semiring.unconvert(marg[1])
+            term_marg = self.semiring.unconvert(marg[2])
+
+            assert term_marg.shape == (batch, N, T)
+            assert root_marg.shape == (batch, NT)
+            assert rule_marg.shape == (batch, NT, NT + T, NT + T)
+            return (term_marg, rule_marg, root_marg, spans_marg)
+
+        inputs = (rule_use, root_use, term_use) + tuple(spans)
+        if _raw:
+            paths = []
+            for k in range(v.shape[0]):
+                obj = v[k : k + 1]
+                marg = marginal(obj, inputs)
+                paths.append(marg[-1])
+            paths = torch.stack(paths, 0)
+            obj = v.sum(dim=0, keepdim=True)
+            term_marg, rule_marg, root_marg, _ = marginal(obj, inputs)
+            return term_marg, rule_marg, root_marg, paths
+        else:
+            return marginal(v, inputs)
+
+    def kbest(self, scores, lengths=None, _autograd=True, _raw=False):
+        """
+        Compute the marginals of a CFG using CKY.
+
+        Parameters:
+            terms : b x n x T
+            rules : b x NT x (NT+T) x (NT+T)
+            root:   b x NT
+
+        Returns:
+            v: b tensor of total sum
+            spans: bxNxT terms, (bxNTx(NT+S)x(NT+S)) rules, bxNT roots
+
+        """
+        terms, rules, roots = scores
+        batch, N, T = terms.shape
+        _, NT, _, _ = rules.shape
+
+        v, (term_use, rule_use, root_use, spans), alpha = self._dp(
+            scores, lengths=lengths, force_grad=True, cache=False
+        )
+        lprob = True 
+        def marginal(obj, inputs):
+            obj = self.semiring.unconvert(obj).sum(dim=0)
+            marg = torch.autograd.grad(
+                obj, inputs, create_graph=True, only_inputs=True, allow_unused=False,
+            )
+            K = NT if NT > T else T
+            spans_marg = torch.zeros(
+                batch, N, N, K, dtype=scores[1].dtype, device=scores[1].device
+            )
+            span_ls = marg[3:]
+            for w in range(len(span_ls)):
+                span_lprob = span_ls[w]
+                if lprob:
+                    span_lprob = span_lprob * spans[w]     
+                x = span_lprob.sum(dim=0, keepdim=True)
+                spans_marg[:, w, : N - w, :x.size(-1)] = self.semiring.unconvert(x)
 
             rule_marg = self.semiring.unconvert(marg[0]).squeeze(1)
             root_marg = self.semiring.unconvert(marg[1])
